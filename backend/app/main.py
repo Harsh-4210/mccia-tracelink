@@ -1,21 +1,35 @@
 from __future__ import annotations
 
+import os
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
-from .db import DB_PATH, connect, row_to_dict
+from .db import DB_PATH, ROOT_DIR, connect, row_to_dict
 from .linking import best_raw_candidate
 from .pipeline import rebuild_database
 from .schemas import BatchEntry
 
+_cors_raw = os.getenv("CORS_ORIGINS", "*").strip()
+if _cors_raw == "*" or not _cors_raw:
+    _allow_origins = ["*"]
+    _allow_credentials = False
+else:
+    _allow_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+    _allow_credentials = True
+
+STATIC_DIR = Path(os.environ.get("FRONTEND_DIST", str(ROOT_DIR / "frontend" / "dist"))).resolve()
+
 app = FastAPI(title="TraceLink MVP", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
+    allow_origins=_allow_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -117,3 +131,32 @@ def resolve_raw(conn, production: dict[str, Any] | None, qc: dict[str, Any] | No
         return None
     supplier = suppliers.get(best.get("supplier_id"), {})
     return {**best, "supplier": supplier}
+
+
+def _mount_frontend() -> None:
+    if not STATIC_DIR.is_dir():
+        return
+    assets = STATIC_DIR / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets)), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    def spa_root() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa_fallback(full_path: str) -> FileResponse:
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404)
+        root = STATIC_DIR.resolve()
+        target = (STATIC_DIR / full_path).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            raise HTTPException(status_code=404) from None
+        if target.is_file():
+            return FileResponse(target)
+        return FileResponse(STATIC_DIR / "index.html")
+
+
+_mount_frontend()

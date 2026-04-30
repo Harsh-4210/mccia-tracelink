@@ -49,3 +49,17 @@ The pipeline reads these root-level files: `raw_materials_log.csv`, `production_
 ## Scaling Brief
 
 See `docs/scaling-to-10-lines.md`.
+
+## Deploy on Railway
+
+This repo ships a single Docker image: Bun builds the Vite app, Python serves `/api/*` and the static SPA from `frontend/dist`. Railway injects `PORT`; the container runs `uvicorn` on that port.
+
+1. Create a project on [Railway](https://railway.app), choose **Deploy from GitHub**, select this repository.
+2. Railway picks up [`Dockerfile`](Dockerfile) and [`railway.toml`](railway.toml). Set the **healthcheck** path to `/api/health` if the dashboard does not read `railway.toml`.
+3. Optional variables:
+   - `CORS_ORIGINS` — comma-separated list if the UI is hosted on another origin (default `*` for demos).
+   - `FRONTEND_DIST` — override path to built static files (default `/app/frontend/dist` in the image).
+
+The SQLite file lives on the container filesystem. Each redeploy rebuilds the DB on first boot from the bundled CSVs. Add a Railway **volume** mounted at `/app/backend` if you need persistence across deploys.
+
+Locally you can smoke-test the production layout after `cd frontend && bun run build` by running uvicorn from the repo root with `PYTHONPATH=backend` (static files must exist under `frontend/dist`).
