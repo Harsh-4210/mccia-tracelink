@@ -54,8 +54,16 @@ See `docs/scaling-to-10-lines.md`.
 
 This repo ships a single Docker image: Bun builds the Vite app, Python serves `/api/*` and the static SPA from `frontend/dist`. Railway injects `PORT`; the container runs `uvicorn` on that port.
 
+### Critical: repository root, not `backend`
+
+In Railway → your service → **Settings** → **Source** → **Root Directory**, this must be **empty** or **`/`** (the Git repo root).
+
+If Root Directory is set to **`backend`**, the build only uploads that folder (~hundreds of KB). Railway then cannot see the repo-root [`Dockerfile`](Dockerfile), the CSV data files, or [`frontend/`](frontend/), so it falls back to **Railpack** on Python only and fails with **“No start command detected”**.
+
+[`railway.json`](railway.json) forces the **DOCKERFILE** builder when the full repo is used.
+
 1. Create a project on [Railway](https://railway.app), choose **Deploy from GitHub**, select this repository.
-2. Railway picks up [`Dockerfile`](Dockerfile) and [`railway.toml`](railway.toml). Set the **healthcheck** path to `/api/health` if the dashboard does not read `railway.toml`.
+2. Clear **Root Directory** so the build uses the repository root. Railway will use [`railway.json`](railway.json) / [`Dockerfile`](Dockerfile). Set the **healthcheck** path to `/api/health` if the dashboard does not pick it up from config.
 3. Optional variables:
    - `CORS_ORIGINS` — comma-separated list if the UI is hosted on another origin (default `*` for demos).
    - `FRONTEND_DIST` — override path to built static files (default `/app/frontend/dist` in the image).
