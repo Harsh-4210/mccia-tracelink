@@ -17,6 +17,12 @@ from fastapi.security import HTTPBearer
 
 from .db import connect
 
+import json
+import logging
+from .config import settings
+
+logger = logging.getLogger(__name__)
+
 # ── Firebase Admin init ──────────────────────────────────────────
 _firebase_app = None
 
@@ -25,23 +31,32 @@ def _init_firebase():
     if _firebase_app is not None:
         return
 
-    root = Path(__file__).resolve().parents[2]
-    key_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", str(root / "backend" / "serviceAccountKey.json"))
+    try:
+        if settings.FIREBASE_SERVICE_ACCOUNT_JSON.strip():
+            # ✅ Production: load from env var string
+            logger.info("Initializing Firebase from environment variable")
+            cred_dict = json.loads(settings.FIREBASE_SERVICE_ACCOUNT_JSON)
+            cred = credentials.Certificate(cred_dict)
+        else:
+            # ✅ Local dev: load from JSON file
+            logger.info("Initializing Firebase from local service account file")
+            cred = credentials.Certificate(settings.FIREBASE_SERVICE_ACCOUNT_PATH)
 
-    if Path(key_path).is_file():
-        cred = credentials.Certificate(key_path)
-        _firebase_app = firebase_admin.initialize_app(cred)
-    else:
-        # Try without credentials (works on Google Cloud or with GOOGLE_APPLICATION_CREDENTIALS env)
-        try:
-            _firebase_app = firebase_admin.initialize_app()
-        except Exception:
-            # Fallback: use project ID only (limited functionality)
-            _firebase_app = firebase_admin.initialize_app(options={"projectId": "tracelink-793ba"})
+        _firebase_app = firebase_admin.initialize_app(cred, {
+            "projectId": settings.FIREBASE_PROJECT_ID,
+        })
+        logger.info("Firebase initialized successfully")
+    except Exception as e:
+        logger.error(f"Firebase initialization failed: {e}")
+        # Fallback for local dev if file is missing
+        if not settings.FIREBASE_SERVICE_ACCOUNT_JSON.strip():
+             try:
+                 _firebase_app = firebase_admin.initialize_app(options={"projectId": settings.FIREBASE_PROJECT_ID})
+             except Exception:
+                 pass
 
-
-# Initialize on module load
 _init_firebase()
+
 
 # ── Token verification ───────────────────────────────────────────
 security = HTTPBearer(auto_error=False)

@@ -30,10 +30,13 @@ class Settings(BaseSettings):
 
     # ── Firebase ─────────────────────────────────────────────────
     FIREBASE_PROJECT_ID: str = "tracelink-793ba"
-    # Path to service account key (optional if running on Google Cloud)
+    # In production: paste full serviceAccountKey.json content as a string
+    # In dev: leave empty and it falls back to the local JSON file
+    FIREBASE_SERVICE_ACCOUNT_JSON: str = ""
+    FIREBASE_SERVICE_ACCOUNT_PATH: str = str(ROOT_DIR / "backend" / "serviceAccountKey.json")
     GOOGLE_APPLICATION_CREDENTIALS: str = str(ROOT_DIR / "backend" / "serviceAccountKey.json")
 
-    # ── CORS ──────────────────────────────────────────────────────
+    # ── CORS ─────────────────────────────────────────────────────
     CORS_ORIGINS: str = "*"
 
     # ── default admin seed ────────────────────────────────────────
