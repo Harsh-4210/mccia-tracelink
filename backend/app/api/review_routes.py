@@ -17,8 +17,10 @@ async def list_unresolved_links(
 ):
     conn = connect()
     try:
+        user_id = user.get("user_id")
         total = conn.execute(
-            "SELECT COUNT(*) as cnt FROM production_batches WHERE inferred_batch_id = 1"
+            "SELECT COUNT(*) as cnt FROM production_batches WHERE inferred_batch_id = 1 AND user_id = ?",
+            (user_id,)
         ).fetchone()["cnt"]
 
         rows = conn.execute("""
@@ -27,11 +29,11 @@ async def list_unresolved_links(
                    COALESCE(tr.status, 'pending') as review_status,
                    tr.reviewed_by, tr.reviewed_at, tr.notes as review_notes
             FROM production_batches p
-            LEFT JOIN trace_reviews tr ON tr.batch_id = p.batch_id AND tr.lot_number = p.input_lot_ref
-            WHERE p.inferred_batch_id = 1
+            LEFT JOIN trace_reviews tr ON tr.batch_id = p.batch_id AND tr.lot_number = p.input_lot_ref AND tr.user_id = p.user_id
+            WHERE p.inferred_batch_id = 1 AND p.user_id = ?
             ORDER BY p.inference_confidence ASC, p.production_date DESC
             LIMIT ? OFFSET ?
-        """, (limit, offset)).fetchall()
+        """, (user_id, limit, offset)).fetchall()
 
         return {
             "unresolved_links": [dict(r) for r in rows],
@@ -48,20 +50,21 @@ async def list_unresolved_links(
 async def approve_link(production_id: int, notes: str = "", user: dict = Depends(require_supervisor_or_above)):
     conn = connect()
     try:
+        user_id = user.get("user_id")
         prod = conn.execute(
-            "SELECT batch_id, input_lot_ref FROM production_batches WHERE production_id = ?",
-            (production_id,),
+            "SELECT batch_id, input_lot_ref FROM production_batches WHERE production_id = ? AND user_id = ?",
+            (production_id, user_id),
         ).fetchone()
         if not prod:
             raise HTTPException(status_code=404, detail="Production record not found")
 
         # Upsert review record
         conn.execute("""
-            INSERT INTO trace_reviews (batch_id, lot_number, status, reviewed_by, notes)
-            VALUES (?, ?, 'approved', ?, ?)
-            ON CONFLICT(batch_id, lot_number) DO UPDATE SET
+            INSERT INTO trace_reviews (batch_id, lot_number, status, reviewed_by, notes, user_id)
+            VALUES (?, ?, 'approved', ?, ?, ?)
+            ON CONFLICT(batch_id, lot_number, user_id) DO UPDATE SET
                 status = 'approved', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, notes = ?
-        """, (prod["batch_id"], prod["input_lot_ref"], user.get("email"), notes,
+        """, (prod["batch_id"], prod["input_lot_ref"], user.get("email"), notes, user_id,
               user.get("email"), notes))
         conn.commit()
         return {"status": "approved", "production_id": production_id, "reviewer": user.get("email")}
@@ -73,19 +76,20 @@ async def approve_link(production_id: int, notes: str = "", user: dict = Depends
 async def reject_link(production_id: int, notes: str = "", user: dict = Depends(require_supervisor_or_above)):
     conn = connect()
     try:
+        user_id = user.get("user_id")
         prod = conn.execute(
-            "SELECT batch_id, input_lot_ref FROM production_batches WHERE production_id = ?",
-            (production_id,),
+            "SELECT batch_id, input_lot_ref FROM production_batches WHERE production_id = ? AND user_id = ?",
+            (production_id, user_id),
         ).fetchone()
         if not prod:
             raise HTTPException(status_code=404, detail="Production record not found")
 
         conn.execute("""
-            INSERT INTO trace_reviews (batch_id, lot_number, status, reviewed_by, notes)
-            VALUES (?, ?, 'rejected', ?, ?)
-            ON CONFLICT(batch_id, lot_number) DO UPDATE SET
+            INSERT INTO trace_reviews (batch_id, lot_number, status, reviewed_by, notes, user_id)
+            VALUES (?, ?, 'rejected', ?, ?, ?)
+            ON CONFLICT(batch_id, lot_number, user_id) DO UPDATE SET
                 status = 'rejected', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, notes = ?
-        """, (prod["batch_id"], prod["input_lot_ref"], user.get("email"), notes,
+        """, (prod["batch_id"], prod["input_lot_ref"], user.get("email"), notes, user_id,
               user.get("email"), notes))
         conn.commit()
         return {"status": "rejected", "production_id": production_id, "reviewer": user.get("email")}

@@ -19,8 +19,8 @@ async def create_operator_entry(entry: BatchEntry, user: dict = Depends(require_
         # Idempotency: if client_entry_id exists, return existing record
         if entry.client_entry_id:
             existing = conn.execute(
-                "SELECT entry_id FROM operator_entries WHERE client_entry_id = ?",
-                (entry.client_entry_id,),
+                "SELECT entry_id FROM operator_entries WHERE client_entry_id = ? AND user_id = ?",
+                (entry.client_entry_id, user.get("user_id")),
             ).fetchone()
             if existing:
                 return {"status": "already_saved", "entry_id": existing["entry_id"], "duplicate": True}
@@ -52,17 +52,12 @@ async def recent_entries(
 ):
     conn = connect()
     try:
-        # Operators see only their entries; supervisors+ see all
-        if user.get("role") == "operator":
-            rows = conn.execute(
-                "SELECT * FROM operator_entries WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
-                (user["user_id"], limit),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM operator_entries ORDER BY created_at DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+        user_id = user.get("user_id")
+        # Everyone sees only their own tenant's data
+        rows = conn.execute(
+            "SELECT * FROM operator_entries WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
         return {"entries": [dict(r) for r in rows]}
     finally:
         conn.close()
@@ -70,11 +65,13 @@ async def recent_entries(
 
 @router.get("/batches/pending")
 async def pending_entries(user: dict = Depends(require_supervisor_or_above)):
-    """Get entries needing supervisor review (backdated or corrected)."""
+    """Get entries needing supervisor review within the current user's workspace."""
     conn = connect()
     try:
+        user_id = user.get("user_id")
         rows = conn.execute(
-            "SELECT * FROM operator_entries WHERE supervisor_approved = 0 ORDER BY created_at DESC",
+            "SELECT * FROM operator_entries WHERE supervisor_approved = 0 AND user_id = ? ORDER BY created_at DESC",
+            (user_id,),
         ).fetchall()
         return {"entries": [dict(r) for r in rows]}
     finally:
@@ -85,9 +82,10 @@ async def pending_entries(user: dict = Depends(require_supervisor_or_above)):
 async def approve_entry(entry_id: int, user: dict = Depends(require_supervisor_or_above)):
     conn = connect()
     try:
+        user_id = user.get("user_id")
         conn.execute(
-            "UPDATE operator_entries SET supervisor_approved = 1, approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE entry_id = ?",
-            (user["user_id"], entry_id),
+            "UPDATE operator_entries SET supervisor_approved = 1, approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE entry_id = ? AND user_id = ?",
+            (user_id, entry_id, user_id),
         )
         conn.commit()
         return {"status": "approved", "entry_id": entry_id}

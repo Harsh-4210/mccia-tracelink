@@ -48,7 +48,9 @@ def rebuild_database(db_path: Path = DB_PATH) -> dict[str, Any]:
     conn.row_factory = sqlite3.Row
     try:
         create_schema(conn)
-        stats = load_all(conn)
+        # We no longer seed global data by default to support multi-tenancy.
+        # Users must import their own data via the UI.
+        stats = {}
         create_indexes(conn)
         conn.commit()
         return {"status": "rebuilt", "database": str(db_path), **stats}
@@ -64,7 +66,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         supplier_name TEXT,
         material_supplied TEXT,
         lead_time_days INTEGER,
-        approved_status TEXT
+        approved_status TEXT,
+        user_id TEXT
     );
 
     CREATE TABLE raw_materials (
@@ -76,7 +79,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         quantity_kg REAL,
         quality_grade TEXT,
         inspector_name TEXT,
-        missing_lot_number INTEGER DEFAULT 0
+        missing_lot_number INTEGER DEFAULT 0,
+        user_id TEXT
     );
 
     CREATE TABLE production_batches (
@@ -91,7 +95,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         cycle_time_min REAL,
         inferred_batch_id INTEGER DEFAULT 0,
         inference_confidence REAL DEFAULT 1.0,
-        inference_reason TEXT
+        inference_reason TEXT,
+        user_id TEXT
     );
 
     CREATE TABLE qc_inspections (
@@ -102,7 +107,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         defect_type_raw TEXT,
         defect_type_normalized TEXT,
         defect_rate_pct REAL,
-        rework_flag TEXT
+        rework_flag TEXT,
+        user_id TEXT
     );
 
     CREATE TABLE dispatch_orders (
@@ -112,12 +118,14 @@ def create_schema(conn: sqlite3.Connection) -> None:
         product_type TEXT,
         quantity INTEGER,
         batch_ref TEXT,
-        vehicle_number TEXT
+        vehicle_number TEXT,
+        user_id TEXT
     );
 
     CREATE TABLE dispatch_batches (
         order_id TEXT,
         batch_id TEXT,
+        user_id TEXT,
         PRIMARY KEY(order_id, batch_id)
     );
 
@@ -129,7 +137,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         defect_description TEXT,
         root_cause_identified TEXT,
         resolution TEXT,
-        financial_impact_inr REAL
+        financial_impact_inr REAL,
+        user_id TEXT
     );
 
     -- ── Operator entries (enhanced for Week 5-6) ────────────────
@@ -189,6 +198,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         filename TEXT,
         file_type TEXT,
         uploader TEXT,
+        user_id TEXT,
         uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
         checksum TEXT,
         row_count INTEGER DEFAULT 0,
@@ -200,6 +210,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     CREATE TABLE source_rows (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         import_id TEXT,
+        user_id TEXT,
         row_number INTEGER,
         raw_json TEXT,
         validation_status TEXT DEFAULT 'valid',
@@ -209,6 +220,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     CREATE TABLE import_errors (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         import_id TEXT,
+        user_id TEXT,
         row_number INTEGER,
         field_name TEXT,
         error_message TEXT,
@@ -219,6 +231,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     CREATE TABLE trace_reviews (
         batch_id TEXT,
         lot_number TEXT,
+        user_id TEXT,
         status TEXT DEFAULT 'pending',
         reviewed_by TEXT,
         reviewed_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -229,6 +242,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     -- ── Corrective actions / CAPA (Week 7-8) ────────────────────
     CREATE TABLE corrective_actions (
         ca_id TEXT PRIMARY KEY,
+        user_id TEXT,
         triggered_by TEXT,
         status TEXT DEFAULT 'open',
         assigned_to TEXT,
@@ -241,6 +255,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         created_by TEXT
     );
+
     ''')
 
 
@@ -302,23 +317,6 @@ def create_indexes(conn: sqlite3.Connection) -> None:
     ''')
 
 
-def seed_default_admin(conn: sqlite3.Connection) -> None:
-    """Seed the default admin user if users table is empty."""
-    from .config import settings
-    from .auth import get_password_hash
-    import uuid
-
-    count = conn.execute("SELECT COUNT(*) as cnt FROM users").fetchone()[0]
-    if count == 0:
-        user_id = str(uuid.uuid4())
-        password_hash = get_password_hash(settings.DEFAULT_ADMIN_PASSWORD)
-        conn.execute(
-            "INSERT INTO users (user_id, email, password_hash, full_name, role) VALUES (?, ?, ?, ?, ?)",
-            (user_id, settings.DEFAULT_ADMIN_EMAIL, password_hash, "System Admin", "admin"),
-        )
-        conn.commit()
-
-
 def ensure_users_table(conn: sqlite3.Connection) -> None:
     """Create users table if it doesn't exist (for upgrades from old schema)."""
     conn.execute("""
@@ -335,11 +333,11 @@ def ensure_users_table(conn: sqlite3.Connection) -> None:
     # Also ensure all production tables exist for upgrades
     for table_sql in [
         "CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT DEFAULT CURRENT_TIMESTAMP, user_id TEXT, user_email TEXT, action TEXT NOT NULL, entity_type TEXT, entity_id TEXT, request_ip TEXT, request_id TEXT, response_status INTEGER, result_summary TEXT, duration_ms REAL)",
-        "CREATE TABLE IF NOT EXISTS source_files (import_id TEXT PRIMARY KEY, filename TEXT, file_type TEXT, uploader TEXT, uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP, checksum TEXT, row_count INTEGER DEFAULT 0, valid_rows INTEGER DEFAULT 0, error_count INTEGER DEFAULT 0, status TEXT DEFAULT 'pending')",
-        "CREATE TABLE IF NOT EXISTS source_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, import_id TEXT, row_number INTEGER, raw_json TEXT, validation_status TEXT DEFAULT 'valid')",
-        "CREATE TABLE IF NOT EXISTS import_errors (id INTEGER PRIMARY KEY AUTOINCREMENT, import_id TEXT, row_number INTEGER, field_name TEXT, error_message TEXT)",
-        "CREATE TABLE IF NOT EXISTS trace_reviews (batch_id TEXT, lot_number TEXT, status TEXT DEFAULT 'pending', reviewed_by TEXT, reviewed_at TEXT DEFAULT CURRENT_TIMESTAMP, notes TEXT, PRIMARY KEY(batch_id, lot_number))",
-        "CREATE TABLE IF NOT EXISTS corrective_actions (ca_id TEXT PRIMARY KEY, triggered_by TEXT, status TEXT DEFAULT 'open', assigned_to TEXT, root_cause TEXT, immediate_action TEXT, corrective_action TEXT, preventive_action TEXT, due_date TEXT, closed_date TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, created_by TEXT)",
+        "CREATE TABLE IF NOT EXISTS source_files (import_id TEXT PRIMARY KEY, filename TEXT, file_type TEXT, uploader TEXT, user_id TEXT, uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP, checksum TEXT, row_count INTEGER DEFAULT 0, valid_rows INTEGER DEFAULT 0, error_count INTEGER DEFAULT 0, status TEXT DEFAULT 'pending')",
+        "CREATE TABLE IF NOT EXISTS source_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, import_id TEXT, row_number INTEGER, raw_json TEXT, validation_status TEXT DEFAULT 'valid', user_id TEXT)",
+        "CREATE TABLE IF NOT EXISTS import_errors (id INTEGER PRIMARY KEY AUTOINCREMENT, import_id TEXT, row_number INTEGER, field_name TEXT, error_message TEXT, user_id TEXT)",
+        "CREATE TABLE IF NOT EXISTS trace_reviews (batch_id TEXT, lot_number TEXT, status TEXT DEFAULT 'pending', reviewed_by TEXT, reviewed_at TEXT DEFAULT CURRENT_TIMESTAMP, notes TEXT, user_id TEXT, PRIMARY KEY(batch_id, lot_number))",
+        "CREATE TABLE IF NOT EXISTS corrective_actions (ca_id TEXT PRIMARY KEY, triggered_by TEXT, status TEXT DEFAULT 'open', assigned_to TEXT, root_cause TEXT, immediate_action TEXT, corrective_action TEXT, preventive_action TEXT, due_date TEXT, closed_date TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, created_by TEXT, user_id TEXT)",
     ]:
         conn.execute(table_sql)
 
@@ -361,6 +359,19 @@ def ensure_users_table(conn: sqlite3.Connection) -> None:
         ]:
             try:
                 conn.execute(col_sql)
+            except Exception:
+                pass
+
+    # Ensure all domain tables have user_id for multi-tenancy
+    for table in ["suppliers", "raw_materials", "production_batches", "qc_inspections",
+                   "dispatch_orders", "dispatch_batches", "complaints",
+                   "source_files", "source_rows", "import_errors",
+                   "trace_reviews", "corrective_actions"]:
+        try:
+            conn.execute(f"SELECT user_id FROM {table} LIMIT 1")
+        except Exception:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id TEXT")
             except Exception:
                 pass
 
@@ -422,21 +433,22 @@ def to_float(value: Any) -> float | None:
 
 import uuid
 
-def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: list[dict[str, Any]]) -> dict[str, int]:
-    imputation_stats = {"total_missing": 0, "rule1_75": 0, "rule2_45": 0, "rule3_0": 0}
+def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: list[dict[str, Any]], user_id: str = "") -> dict[str, int]:
+    imputation_stats = {"total_missing": 0, "rule1_90": 0, "rule2_75": 0, "rule3_55": 0, "rule4_30": 0, "rule3_0": 0}
     
     if file_type == "supplier":
         for r in valid_rows:
             conn.execute(
                 """INSERT OR REPLACE INTO suppliers
-                (supplier_id, supplier_name, material_supplied, lead_time_days, approved_status)
-                VALUES (?, ?, ?, ?, ?)""",
+                (supplier_id, supplier_name, material_supplied, lead_time_days, approved_status, user_id)
+                VALUES (?, ?, ?, ?, ?, ?)""",
                 (
                     clean_text(r.get("supplier_id")),
                     clean_text(r.get("supplier_name")),
                     clean_text(r.get("material_supplied")),
                     to_int(r.get("lead_time_days")),
                     clean_text(r.get("approved_status")),
+                    user_id,
                 ),
             )
             
@@ -444,8 +456,8 @@ def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: 
         for r in valid_rows:
             conn.execute(
                 """INSERT OR IGNORE INTO raw_materials
-                (lot_number, supplier_id, material_type, quantity_kg, receipt_date, quality_grade, inspector_name)
-                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (lot_number, supplier_id, material_type, quantity_kg, receipt_date, quality_grade, inspector_name, user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     clean_text(r.get("lot_number")),
                     clean_text(r.get("supplier_id")),
@@ -454,6 +466,7 @@ def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: 
                     parse_date(r.get("receipt_date")),
                     clean_text(r.get("quality_grade")),
                     clean_text(r.get("inspector_name")),
+                    user_id,
                 ),
             )
 
@@ -471,95 +484,96 @@ def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: 
             machine_id = clean_text(r.get("machine_id"))
             
             conn.execute(
-                "INSERT INTO production_batches (batch_id, input_lot_ref, units_produced, production_date, machine_id, operator_id, shift, inferred_batch_id, inference_confidence, inference_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (batch_id, input_lot_ref, to_int(r.get("units_produced")), prod_date_str, machine_id, clean_text(r.get("operator_id")), clean_text(r.get("shift")), 0, 1.0, None)
+                "INSERT INTO production_batches (batch_id, input_lot_ref, units_produced, production_date, machine_id, operator_id, shift, inferred_batch_id, inference_confidence, inference_reason, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (batch_id, input_lot_ref, to_int(r.get("units_produced")), prod_date_str, machine_id, clean_text(r.get("operator_id")), clean_text(r.get("shift")), 0, 1.0, None, user_id)
             )
 
         # Second pass: Impute missing batch_ids using full dataset context
-        # 5-tier imputation engine — picks closest date match at each tier
         for r in missing_rows:
             input_lot_ref = clean_text(r.get("input_lot_ref"))
             prod_date_str = parse_date(r.get("date"))
+            p_date = parser.parse(prod_date_str) if prod_date_str else None
             machine_id = clean_text(r.get("machine_id"))
-            
+
             imputation_stats["total_missing"] += 1
             batch_id = None
             inferred = 1
             confidence = 0.0
             reason = None
-            p_date = None
-            
-            if prod_date_str:
-                try:
-                    p_date = parser.parse(prod_date_str)
-                except Exception:
-                    pass
 
-            def find_closest(candidates, max_days):
-                """Return the batch_id of the candidate with the closest production_date within max_days."""
-                best_id = None
-                best_gap = max_days + 1
+            # ── Imputation logic (Rules 1-5) ──
+            # Rule 1: Same lot + Same machine, ±7 days
+            if not batch_id and input_lot_ref and p_date and machine_id:
+                candidates = conn.execute(
+                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND machine_id = ? AND inferred_batch_id = 0 AND user_id = ?",
+                    (input_lot_ref, machine_id, user_id)
+                ).fetchall()
                 for c in candidates:
-                    if c["production_date"] and p_date:
+                    if c["production_date"]:
                         try:
-                            c_date = parser.parse(c["production_date"])
-                            gap = abs((p_date - c_date).days)
-                            if gap <= max_days and gap < best_gap:
+                            gap = abs((p_date - parser.parse(c["production_date"])).days)
+                            if gap <= 7:
+                                batch_id = c["batch_id"]
+                                inferred = 1
+                                confidence = 0.90
+                                reason = "Rule 1: Same lot + machine, ±7 days"
+                                imputation_stats.setdefault("rule1_90", 0)
+                                imputation_stats["rule1_90"] += 1
+                                break
+                        except Exception: continue
+
+            # Rule 2: Same lot, ±14 days
+            if not batch_id and input_lot_ref and p_date:
+                candidates = conn.execute(
+                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND inferred_batch_id = 0 AND user_id = ?",
+                    (input_lot_ref, user_id)
+                ).fetchall()
+                for c in candidates:
+                    if c["production_date"]:
+                        try:
+                            gap = abs((p_date - parser.parse(c["production_date"])).days)
+                            if gap <= 14:
+                                batch_id = c["batch_id"]
+                                inferred = 1
+                                confidence = 0.75
+                                reason = "Rule 2: Same lot, ±14 days"
+                                imputation_stats.setdefault("rule2_75", 0)
+                                imputation_stats["rule2_75"] += 1
+                                break
+                        except Exception: continue
+
+            # Rule 3: Same lot, ±30 days (closest)
+            if not batch_id and input_lot_ref and p_date:
+                best_id = None
+                best_gap = 31
+                candidates = conn.execute(
+                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND inferred_batch_id = 0 AND user_id = ?",
+                    (input_lot_ref, user_id)
+                ).fetchall()
+                for c in candidates:
+                    if c["production_date"]:
+                        try:
+                            gap = abs((p_date - parser.parse(c["production_date"])).days)
+                            if gap < best_gap:
                                 best_gap = gap
                                 best_id = c["batch_id"]
-                        except Exception:
-                            continue
-                return best_id
-
-            # ── Rule 1 (90%): Same lot + same machine, ±7 days ──
-            if not batch_id and input_lot_ref and machine_id and p_date:
-                candidates = conn.execute(
-                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND machine_id = ? AND inferred_batch_id = 0",
-                    (input_lot_ref, machine_id)
-                ).fetchall()
-                match = find_closest(candidates, 7)
-                if match:
-                    batch_id = match
-                    confidence = 0.90
-                    reason = "Rule 1: Same lot + same machine, ±7 days (closest date)"
-                    imputation_stats["rule1_75"] += 1
-
-            # ── Rule 2 (75%): Same lot, ±14 days ──
-            if not batch_id and input_lot_ref and p_date:
-                candidates = conn.execute(
-                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND inferred_batch_id = 0",
-                    (input_lot_ref,)
-                ).fetchall()
-                match = find_closest(candidates, 14)
-                if match:
-                    batch_id = match
-                    confidence = 0.75
-                    reason = "Rule 2: Same lot, ±14 days (closest date)"
-                    imputation_stats["rule2_45"] += 1
-
-            # ── Rule 3 (55%): Same lot, ±30 days ──
-            if not batch_id and input_lot_ref and p_date:
-                candidates = conn.execute(
-                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND inferred_batch_id = 0",
-                    (input_lot_ref,)
-                ).fetchall()
-                match = find_closest(candidates, 30)
-                if match:
-                    batch_id = match
+                        except Exception: continue
+                if best_id:
+                    batch_id = best_id
+                    inferred = 1
                     confidence = 0.55
                     reason = "Rule 3: Same lot, ±30 days (closest date)"
                     imputation_stats.setdefault("rule3_55", 0)
                     imputation_stats["rule3_55"] += 1
 
-            # ── Rule 4 (30%): Same lot, nearest neighbor (any distance) ──
+            # Rule 4: Same lot, nearest neighbor
             if not batch_id and input_lot_ref:
                 candidates = conn.execute(
-                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND inferred_batch_id = 0",
-                    (input_lot_ref,)
+                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND inferred_batch_id = 0 AND user_id = ?",
+                    (input_lot_ref, user_id)
                 ).fetchall()
                 if candidates:
                     if p_date:
-                        # pick the closest by date
                         best_id = None
                         best_gap = float("inf")
                         for c in candidates:
@@ -569,12 +583,10 @@ def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: 
                                     if gap < best_gap:
                                         best_gap = gap
                                         best_id = c["batch_id"]
-                                except Exception:
-                                    continue
+                                except Exception: continue
                         if best_id:
                             batch_id = best_id
                     else:
-                        # no date, just pick the first known batch for this lot
                         batch_id = candidates[0]["batch_id"]
                     if batch_id:
                         confidence = 0.30
@@ -582,7 +594,7 @@ def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: 
                         imputation_stats.setdefault("rule4_30", 0)
                         imputation_stats["rule4_30"] += 1
 
-            # ── Rule 5 (0%): No match — synthetic ID ──
+            # Rule 5: Synthetic
             if not batch_id:
                 batch_id = "SYN-" + str(uuid.uuid4())[:8].upper()
                 confidence = 0.0
@@ -590,30 +602,30 @@ def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: 
                 imputation_stats["rule3_0"] += 1
 
             conn.execute(
-                "INSERT INTO production_batches (batch_id, input_lot_ref, units_produced, production_date, machine_id, operator_id, shift, inferred_batch_id, inference_confidence, inference_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (batch_id, input_lot_ref, to_int(r.get("units_produced")), prod_date_str, machine_id, clean_text(r.get("operator_id")), clean_text(r.get("shift")), inferred, confidence, reason)
+                "INSERT INTO production_batches (batch_id, input_lot_ref, units_produced, production_date, machine_id, operator_id, shift, inferred_batch_id, inference_confidence, inference_reason, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (batch_id, input_lot_ref, to_int(r.get("units_produced")), prod_date_str, machine_id, clean_text(r.get("operator_id")), clean_text(r.get("shift")), inferred, confidence, reason, user_id)
             )
 
     elif file_type == "qc":
         for r in valid_rows:
             batch_id = clean_text(r.get("batch_id"))
-            conn.execute("INSERT OR REPLACE INTO qc_inspections (batch_id, inspection_date, inspector_id, pass_fail, defect_type_raw, defect_rate_pct, defect_type_normalized) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                         (batch_id, parse_date(r.get("inspection_date")), clean_text(r.get("inspector_id")), clean_text(r.get("pass_fail")), clean_text(r.get("defect_type")), to_float(r.get("defect_rate_pct")), normalize_defect_type(r.get("defect_type"))))
+            conn.execute("INSERT OR REPLACE INTO qc_inspections (batch_id, inspection_date, inspector_id, pass_fail, defect_type_raw, defect_rate_pct, defect_type_normalized, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                         (batch_id, parse_date(r.get("inspection_date")), clean_text(r.get("inspector_id")), clean_text(r.get("pass_fail")), clean_text(r.get("defect_type")), to_float(r.get("defect_rate_pct")), normalize_defect_type(r.get("defect_type")), user_id))
                          
     elif file_type == "dispatch":
         for r in valid_rows:
             order_id = clean_text(r.get("order_id"))
-            conn.execute("INSERT OR REPLACE INTO dispatch_orders (order_id, dispatch_date, customer_id, product_type, quantity, batch_ref, vehicle_number) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                         (order_id, parse_date(r.get("dispatch_date")), clean_text(r.get("customer_id")), clean_text(r.get("product_type")), to_int(r.get("quantity")), clean_text(r.get("batch_ref")), clean_text(r.get("vehicle_number"))))
+            conn.execute("INSERT OR REPLACE INTO dispatch_orders (order_id, dispatch_date, customer_id, product_type, quantity, batch_ref, vehicle_number, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                         (order_id, parse_date(r.get("dispatch_date")), clean_text(r.get("customer_id")), clean_text(r.get("product_type")), to_int(r.get("quantity")), clean_text(r.get("batch_ref")), clean_text(r.get("vehicle_number")), user_id))
             batches_str = clean_text(r.get("batch_ref"))
             if batches_str:
                 for b in split_batches(batches_str):
-                    conn.execute("INSERT OR IGNORE INTO dispatch_batches (order_id, batch_id) VALUES (?, ?)",
-                                 (order_id, b))
+                    conn.execute("INSERT OR IGNORE INTO dispatch_batches (order_id, batch_id, user_id) VALUES (?, ?, ?)",
+                                 (order_id, b, user_id))
                                  
     elif file_type == "complaints":
         for r in valid_rows:
-            conn.execute("INSERT OR REPLACE INTO complaints (complaint_id, oem_id, complaint_date, affected_order_ids, defect_description, root_cause_identified, resolution, financial_impact_inr) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                         (clean_text(r.get("complaint_id")), clean_text(r.get("oem_id")), parse_date(r.get("complaint_date")), clean_text(r.get("affected_order_ids")), clean_text(r.get("defect_description")), clean_text(r.get("root_cause_identified")), clean_text(r.get("resolution")), to_float(r.get("financial_impact_inr"))))
+            conn.execute("INSERT OR REPLACE INTO complaints (complaint_id, oem_id, complaint_date, affected_order_ids, defect_description, root_cause_identified, resolution, financial_impact_inr, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                         (clean_text(r.get("complaint_id")), clean_text(r.get("oem_id")), parse_date(r.get("complaint_date")), clean_text(r.get("affected_order_ids")), clean_text(r.get("defect_description")), clean_text(r.get("root_cause_identified")), clean_text(r.get("resolution")), to_float(r.get("financial_impact_inr")), user_id))
                          
     return imputation_stats

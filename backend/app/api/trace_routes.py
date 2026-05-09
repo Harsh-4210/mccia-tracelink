@@ -16,16 +16,16 @@ from ..linking import best_raw_candidate
 router = APIRouter(prefix="/trace", tags=["trace"])
 
 
-def resolve_raw(conn, production: dict[str, Any] | None, qc: dict[str, Any] | None) -> dict[str, Any] | None:
+def resolve_raw(conn, production: dict[str, Any] | None, qc: dict[str, Any] | None, user_id: str) -> dict[str, Any] | None:
     if not production or not production.get("input_lot_ref"):
         return None
-    suppliers = {r["supplier_id"]: dict(r) for r in conn.execute("SELECT * FROM suppliers").fetchall()}
+    suppliers = {r["supplier_id"]: dict(r) for r in conn.execute("SELECT * FROM suppliers WHERE user_id = ?", (user_id,)).fetchall()}
     complaint_rows = conn.execute(
-        "SELECT defect_description, root_cause_identified FROM complaints WHERE root_cause_identified LIKE ?",
-        (f"%{production['input_lot_ref']}%",),
+        "SELECT defect_description, root_cause_identified FROM complaints WHERE root_cause_identified LIKE ? AND user_id = ?",
+        (f"%{production['input_lot_ref']}%", user_id),
     ).fetchall()
     complaint_text = " ".join(" ".join(str(v or "") for v in dict(row).values()) for row in complaint_rows)
-    candidates = [dict(r) for r in conn.execute("SELECT * FROM raw_materials WHERE lot_number = ?", (production["input_lot_ref"],)).fetchall()]
+    candidates = [dict(r) for r in conn.execute("SELECT * FROM raw_materials WHERE lot_number = ? AND user_id = ?", (production["input_lot_ref"], user_id)).fetchall()]
     best = best_raw_candidate(candidates, suppliers, qc, complaint_text)
     if not best:
         return None
@@ -33,19 +33,19 @@ def resolve_raw(conn, production: dict[str, Any] | None, qc: dict[str, Any] | No
     return {**best, "supplier": supplier}
 
 
-def _build_trace(order_id: str) -> dict[str, Any]:
+def _build_trace(order_id: str, user_id: str) -> dict[str, Any]:
     start = time.perf_counter()
     conn = connect()
     try:
-        dispatch = row_to_dict(conn.execute("SELECT * FROM dispatch_orders WHERE order_id = ?", (order_id,)).fetchone())
+        dispatch = row_to_dict(conn.execute("SELECT * FROM dispatch_orders WHERE order_id = ? AND user_id = ?", (order_id, user_id)).fetchone())
         if not dispatch:
             raise HTTPException(status_code=404, detail=f"Dispatch order {order_id} not found")
         batches = []
-        for link in conn.execute("SELECT batch_id FROM dispatch_batches WHERE order_id = ? ORDER BY batch_id", (order_id,)).fetchall():
+        for link in conn.execute("SELECT batch_id FROM dispatch_batches WHERE order_id = ? AND user_id = ? ORDER BY batch_id", (order_id, user_id)).fetchall():
             batch_id = link["batch_id"]
-            production = row_to_dict(conn.execute("SELECT * FROM production_batches WHERE batch_id = ? ORDER BY inferred_batch_id LIMIT 1", (batch_id,)).fetchone())
-            qc = row_to_dict(conn.execute("SELECT * FROM qc_inspections WHERE batch_id = ?", (batch_id,)).fetchone())
-            raw = resolve_raw(conn, production, qc) if production else None
+            production = row_to_dict(conn.execute("SELECT * FROM production_batches WHERE batch_id = ? AND user_id = ? ORDER BY inferred_batch_id LIMIT 1", (batch_id, user_id)).fetchone())
+            qc = row_to_dict(conn.execute("SELECT * FROM qc_inspections WHERE batch_id = ? AND user_id = ?", (batch_id, user_id)).fetchone())
+            raw = resolve_raw(conn, production, qc, user_id) if production else None
 
             # Determine link type
             link_type = "none"
@@ -56,8 +56,8 @@ def _build_trace(order_id: str) -> dict[str, Any]:
                     link_type = "inferred"
                 # Check if reviewed
                 review_row = conn.execute(
-                    "SELECT status FROM trace_reviews WHERE batch_id = ? AND lot_number = ? LIMIT 1",
-                    (batch_id, production.get("input_lot_ref", "")),
+                    "SELECT status FROM trace_reviews WHERE batch_id = ? AND lot_number = ? AND user_id = ? LIMIT 1",
+                    (batch_id, production.get("input_lot_ref", ""), user_id),
                 ).fetchone()
                 if review_row and review_row["status"] == "approved":
                     link_type = "reviewed"
@@ -90,7 +90,7 @@ def _build_trace(order_id: str) -> dict[str, Any]:
                 if lot and lot not in seen_lots:
                     seen_lots.add(lot)
                     # Check if this lot comes from multiple suppliers
-                    multi_supplier = conn.execute("SELECT COUNT(DISTINCT supplier_id) as cnt FROM raw_materials WHERE lot_number = ?", (lot,)).fetchone()
+                    multi_supplier = conn.execute("SELECT COUNT(DISTINCT supplier_id) as cnt FROM raw_materials WHERE lot_number = ? AND user_id = ?", (lot, user_id)).fetchone()
                     if multi_supplier and multi_supplier["cnt"] > 1:
                         anomalies.append(f"Cross-Supplier Anomaly: Lot {lot} was sourced from {multi_supplier['cnt']} different suppliers.")
 
@@ -98,51 +98,51 @@ def _build_trace(order_id: str) -> dict[str, Any]:
             "query_ms": round((time.perf_counter() - start) * 1000, 2),
             "dispatch": dispatch,
             "batches": batches,
-            "incomplete_warnings": missing_chains,
+            "warnings": missing_chains,
             "anomalies": anomalies,
+            "status": "complete" if not missing_chains else "partial",
         }
     finally:
         conn.close()
 
 
-@router.get("/dispatch/{order_id}")
-async def trace_dispatch(order_id: str, user: dict = Depends(get_current_user)):
-    return _build_trace(order_id)
+@router.get("/{order_id}")
+async def get_trace(order_id: str, user: dict = Depends(get_current_user)):
+    return _build_trace(order_id, user.get("user_id"))
 
 
-@router.get("/dispatch/{order_id}/export")
-async def export_trace(
-    order_id: str,
-    format: str = Query("csv", pattern="^(csv)$"),
-    user: dict = Depends(get_current_user),
-):
-    result = _build_trace(order_id)
+import datetime
+
+@router.get("/{order_id}/export")
+async def export_trace(order_id: str, user: dict = Depends(get_current_user)):
+    data = _build_trace(order_id, user.get("user_id"))
+    
     output = io.StringIO()
     writer = csv.writer(output)
+    # Header
     writer.writerow([
         "order_id", "dispatch_date", "customer_id", "batch_id", "link_type",
-        "raw_lot", "supplier_id", "supplier_name", "material_type", "confidence",
+        "raw_lot", "supplier_id", "supplier_name", "material_type",
         "qc_pass_fail", "defect_type", "defect_rate_pct",
         "machine_id", "shift", "operator_id",
         "generated_by", "generated_at",
     ])
-    import datetime
-    for b in result["batches"]:
+    
+    for b in data["batches"]:
         p = b.get("production") or {}
         q = b.get("qc") or {}
         r = b.get("raw_material") or {}
         s = r.get("supplier") or {}
         writer.writerow([
             order_id,
-            result["dispatch"].get("dispatch_date", ""),
-            result["dispatch"].get("customer_id", ""),
+            data["dispatch"].get("dispatch_date", ""),
+            data["dispatch"].get("customer_id", ""),
             b["batch_id"],
             b.get("link_type", ""),
             p.get("input_lot_ref", ""),
             r.get("supplier_id", ""),
             s.get("supplier_name", ""),
             r.get("material_type", ""),
-            r.get("confidence", ""),
             q.get("pass_fail", ""),
             q.get("defect_type_normalized", ""),
             q.get("defect_rate_pct", ""),
@@ -154,7 +154,7 @@ async def export_trace(
         ])
     output.seek(0)
     return StreamingResponse(
-        output,
+        iter([output.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=trace_{order_id}.csv"},
     )

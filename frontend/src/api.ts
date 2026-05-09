@@ -143,11 +143,6 @@ export async function fetchUsers(): Promise<any> {
   return res.json();
 }
 
-export async function updateUserRole(userId: string, role: string): Promise<any> {
-  const res = await authFetch(`/api/v1/auth/users/${userId}/role?role=${role}`, { method: "PATCH" });
-  if (!res.ok) throw new Error("Failed to update user role");
-  return res.json();
-}
 
 // ── Dashboard ────────────────────────────────────────────────
 export async function fetchDashboard(): Promise<DashboardMetrics> {

@@ -19,7 +19,6 @@ import {
   type DashboardMetrics,
   type TraceResult,
   fetchUsers,
-  updateUserRole,
   fetchAiQuery,
   fetchAuditEvents,
   fetchPipelineAudit,
@@ -383,17 +382,16 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
     localStorage.setItem("tl_guide_seen", "1");
   }
 
-  const role = user?.role || "pending";
   const allNavItems = [
-    { to: "/app/dashboard", icon: Icon.dashboard, label: t("nav.dashboard"), roles: ["pending", "operator", "supervisor", "quality", "manager", "admin"] },
-    { to: "/app/ai", icon: Icon.ai, label: "AI Assistant", roles: ["pending", "operator", "supervisor", "quality", "manager", "admin"] },
-    { to: "/app/trace", icon: Icon.trace, label: t("nav.trace"), roles: ["operator", "supervisor", "quality", "manager", "admin"] },
-    { to: "/app/alert", icon: Icon.alert, label: t("nav.alert"), roles: ["supervisor", "quality", "manager", "admin"] },
-    { to: "/app/operator", icon: Icon.operator, label: t("nav.operator"), roles: ["operator", "supervisor", "quality", "manager", "admin"] },
-    { to: "/app/import", icon: Icon.import, label: t("nav.import"), roles: ["manager", "quality", "admin"] },
-    { to: "/app/review", icon: Icon.review, label: t("nav.review"), roles: ["manager", "quality", "admin"] },
-    { to: "/app/compliance", icon: Icon.compliance, label: t("nav.compliance"), roles: ["manager", "quality", "admin"] },
-    { to: "/app/audit", icon: Icon.audit, label: "Data Audit", roles: ["admin"] },
+    { to: "/app/dashboard", icon: Icon.dashboard, label: t("nav.dashboard") },
+    { to: "/app/ai", icon: Icon.ai, label: "AI Assistant" },
+    { to: "/app/trace", icon: Icon.trace, label: t("nav.trace") },
+    { to: "/app/alert", icon: Icon.alert, label: t("nav.alert") },
+    { to: "/app/operator", icon: Icon.operator, label: t("nav.operator") },
+    { to: "/app/import", icon: Icon.import, label: t("nav.import") },
+    { to: "/app/review", icon: Icon.review, label: t("nav.review") },
+    { to: "/app/compliance", icon: Icon.compliance, label: t("nav.compliance") },
+    { to: "/app/audit", icon: Icon.audit, label: "Data Audit" },
   ];
 
   // RBAC UNLOCKED: Show all navigation items to every authenticated user
@@ -417,7 +415,6 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
             </div>
             <div style={{ flex: 1, overflow: "hidden" }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.email || "authenticated"}</div>
-              <div style={{ fontSize: 11, color: "var(--ink-dim)", textTransform: "capitalize" }}>{role}</div>
             </div>
           </Link>
         </aside>
@@ -902,15 +899,9 @@ function DashboardScreen() {
             </div>
             <h2 style={{ fontSize: 24, margin: "0 0 12px" }}>{t("dash.empty.title")}</h2>
             <p style={{ color: "var(--ink-mid)", fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
-              {user?.role === "operator"
-                ? "No production data is available yet. Use the shop-floor logger to capture batch activity, then sync when you are online."
-                : "No production data is available yet. Import the traceability CSV files to populate dashboard metrics and review queues."}
+              No production data is available yet. Import the traceability CSV files to populate dashboard metrics and review queues.
             </p>
-            {["manager", "quality", "admin"].includes(user?.role || "") ? (
-              <Link to="/app/import" className="d1-btn amber" style={{ display: "inline-block", textDecoration: "none", padding: "10px 24px" }}>{t("dash.empty.btn")}</Link>
-            ) : (
-              <div className="d1-error" style={{ textAlign: "left" }}>{t("account.pending_warning")}</div>
-            )}
+            <Link to="/app/import" className="d1-btn amber" style={{ display: "inline-block", textDecoration: "none", padding: "10px 24px" }}>{t("dash.empty.btn")}</Link>
           </div>
         </div>
       )}
@@ -998,7 +989,8 @@ function ImportScreen() {
       setFile(null);
       await refresh();
     } catch (e: any) {
-      setMessage(e?.message || "Import failed");
+      window.alert(e?.message || "Import failed due to missing columns or invalid format");
+      setMessage("");
     }
   }
 
@@ -1203,28 +1195,11 @@ function AccountScreen() {
   const [users, setUsers] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const isAdmin = user?.role === "admin";
-
   useEffect(() => {
-    if (isAdmin) {
-      fetchUsers().then((res) => setUsers(res.users)).catch((e) => setError(e.message));
-    }
-  }, [isAdmin]);
-
-  async function handleRoleChange(userId: string, newRole: string) {
-    try {
-      await updateUserRole(userId, newRole);
-      setUsers(users.map(u => u.user_id === userId ? { ...u, role: newRole } : u));
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
+    fetchUsers().then((res) => setUsers(res.users)).catch((e) => setError(e.message));
+  }, []);
 
   const initials = (user?.email || "U").slice(0, 2).toUpperCase();
-  const roleBadgeColor: Record<string, string> = {
-    admin: "#3b82f6", manager: "#8b5cf6", quality: "#10b981",
-    supervisor: "#f59e0b", operator: "#6366f1", pending: "#ef4444",
-  };
 
   return (
     <DashboardShell page="ACCOUNT">
@@ -1245,28 +1220,17 @@ function AccountScreen() {
           <p style={{ color: "var(--ink-dim)", margin: "0 0 20px", fontSize: 14 }}>{user?.email}</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
             <div style={{ padding: 16, background: "var(--bg)", borderRadius: "var(--radius)", border: "1px solid var(--line)" }}>
-              <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--ink-dim)", marginBottom: 6 }}>Role</div>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 99, fontSize: 13, fontWeight: 600, color: "#fff", background: roleBadgeColor[user?.role || "pending"] || "var(--ink-dim)" }}>
-                {(user?.role || "pending").toUpperCase()}
-              </span>
-            </div>
-            <div style={{ padding: 16, background: "var(--bg)", borderRadius: "var(--radius)", border: "1px solid var(--line)" }}>
               <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--ink-dim)", marginBottom: 6 }}>Auth Provider</div>
               <span style={{ fontWeight: 600 }}>Firebase</span>
             </div>
             <div style={{ padding: 16, background: "var(--bg)", borderRadius: "var(--radius)", border: "1px solid var(--line)" }}>
               <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--ink-dim)", marginBottom: 6 }}>Status</div>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600, color: user?.role === "pending" ? "var(--red)" : "var(--green)" }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: user?.role === "pending" ? "var(--red)" : "var(--green)" }} />
-                {user?.role === "pending" ? "Pending Approval" : "Active"}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600, color: "var(--green)" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
+                Active
               </span>
             </div>
           </div>
-          {user?.role === "pending" && (
-            <div className="d1-error" style={{ marginTop: 20 }}>
-              {t("account.pending_warning")}
-            </div>
-          )}
         </div>
       </div>
 
@@ -1366,8 +1330,7 @@ function AccountScreen() {
         </div>
       </div>
 
-      {/* ── Admin: User Management ── */}
-      {isAdmin && (
+      {/* ── User Management ── */}
         <div className="d1-frame">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
             <h2 style={{ margin: 0, fontSize: 18 }}>{t("account.admin_title")}</h2>
@@ -1377,7 +1340,7 @@ function AccountScreen() {
           <div className="d1-table-wrapper">
             <table className="d1-table">
               <thead>
-                <tr><th>Email</th><th>Name</th><th>Status</th><th>Role</th></tr>
+                <tr><th>Email</th><th>Name</th><th>Status</th></tr>
               </thead>
               <tbody>
                 {users.map(u => (
@@ -1385,24 +1348,7 @@ function AccountScreen() {
                     <td style={{ fontWeight: 500 }}>{u.email}</td>
                     <td>{u.full_name || "—"}</td>
                     <td>
-                      <span className={`badge ${u.role === "pending" ? "delay" : "success"}`}>
-                        {u.role === "pending" ? "Pending" : "Active"}
-                      </span>
-                    </td>
-                    <td>
-                      <select
-                        className="d1-input"
-                        style={{ padding: "6px 10px", width: "auto", fontSize: 13 }}
-                        value={u.role}
-                        onChange={(e) => handleRoleChange(u.user_id, e.target.value)}
-                      >
-                        <option value="pending">pending</option>
-                        <option value="operator">operator</option>
-                        <option value="supervisor">supervisor</option>
-                        <option value="quality">quality</option>
-                        <option value="manager">manager</option>
-                        <option value="admin">admin</option>
-                      </select>
+                      <span className="badge success">Active</span>
                     </td>
                   </tr>
                 ))}
@@ -1410,7 +1356,6 @@ function AccountScreen() {
             </table>
           </div>
         </div>
-      )}
     </DashboardShell>
   );
 }

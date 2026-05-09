@@ -22,7 +22,7 @@ from .db import DB_PATH, ROOT_DIR, connect, row_to_dict
 from .auth import get_current_user, require_admin, require_operator_or_above
 from .linking import best_raw_candidate
 from .middleware import AuditMiddleware
-from .pipeline import rebuild_database, ensure_users_table, seed_default_admin
+from .pipeline import rebuild_database, ensure_users_table
 from .schemas import BatchEntry
 
 # ── API route imports ────────────────────────────────────────────
@@ -62,7 +62,6 @@ async def lifespan(app: FastAPI):
     conn = connect()
     try:
         ensure_users_table(conn)
-        seed_default_admin(conn)
     finally:
         conn.close()
 
@@ -121,15 +120,16 @@ def trace_dispatch(order_id: str, user: dict = Depends(get_current_user)) -> dic
     start = time.perf_counter()
     conn = connect()
     try:
-        dispatch = row_to_dict(conn.execute("SELECT * FROM dispatch_orders WHERE order_id = ?", (order_id,)).fetchone())
+        user_id = user.get("user_id")
+        dispatch = row_to_dict(conn.execute("SELECT * FROM dispatch_orders WHERE order_id = ? AND user_id = ?", (order_id, user_id)).fetchone())
         if not dispatch:
             raise HTTPException(status_code=404, detail=f"Dispatch order {order_id} not found")
         batches = []
-        for link in conn.execute("SELECT batch_id FROM dispatch_batches WHERE order_id = ? ORDER BY batch_id", (order_id,)).fetchall():
+        for link in conn.execute("SELECT batch_id FROM dispatch_batches WHERE order_id = ? AND user_id = ? ORDER BY batch_id", (order_id, user_id)).fetchall():
             batch_id = link["batch_id"]
-            production = row_to_dict(conn.execute("SELECT * FROM production_batches WHERE batch_id = ? ORDER BY inferred_batch_id LIMIT 1", (batch_id,)).fetchone())
-            qc = row_to_dict(conn.execute("SELECT * FROM qc_inspections WHERE batch_id = ?", (batch_id,)).fetchone())
-            raw = resolve_raw(conn, production, qc) if production else None
+            production = row_to_dict(conn.execute("SELECT * FROM production_batches WHERE batch_id = ? AND user_id = ? ORDER BY inferred_batch_id LIMIT 1", (batch_id, user_id)).fetchone())
+            qc = row_to_dict(conn.execute("SELECT * FROM qc_inspections WHERE batch_id = ? AND user_id = ?", (batch_id, user_id)).fetchone())
+            raw = resolve_raw(conn, production, qc, user_id) if production else None
             batches.append({"batch_id": batch_id, "production": production, "qc": qc, "raw_material": raw})
         return {"query_ms": round((time.perf_counter() - start) * 1000, 2), "dispatch": dispatch, "batches": batches}
     finally:
@@ -141,25 +141,26 @@ def lot_alert(lot_number: str, user: dict = Depends(get_current_user)) -> dict[s
     start = time.perf_counter()
     conn = connect()
     try:
-        productions = [dict(r) for r in conn.execute("SELECT * FROM production_batches WHERE input_lot_ref = ? AND batch_id IS NOT NULL", (lot_number,)).fetchall()]
+        user_id = user.get("user_id")
+        productions = [dict(r) for r in conn.execute("SELECT * FROM production_batches WHERE input_lot_ref = ? AND user_id = ? AND batch_id IS NOT NULL", (lot_number, user_id)).fetchall()]
         batch_ids = [p["batch_id"] for p in productions]
         affected = []
         for batch_id in batch_ids:
             rows = conn.execute("""
                 SELECT d.*, db.batch_id, q.pass_fail, q.defect_type_normalized, q.defect_rate_pct
                 FROM dispatch_batches db
-                JOIN dispatch_orders d ON d.order_id = db.order_id
-                LEFT JOIN qc_inspections q ON q.batch_id = db.batch_id
-                WHERE db.batch_id = ?
+                JOIN dispatch_orders d ON d.order_id = db.order_id AND d.user_id = db.user_id
+                LEFT JOIN qc_inspections q ON q.batch_id = db.batch_id AND q.user_id = db.user_id
+                WHERE db.batch_id = ? AND db.user_id = ?
                 ORDER BY d.dispatch_date, d.order_id
-            """, (batch_id,)).fetchall()
+            """, (batch_id, user_id)).fetchall()
             for row in rows:
                 affected.append(dict(row))
 
-        # Compute failed batches from QC data (no hardcoded anchor batches)
+        # Compute failed batches from QC data
         failed_batches = []
         for batch_id in batch_ids:
-            qc = conn.execute("SELECT pass_fail FROM qc_inspections WHERE batch_id = ?", (batch_id,)).fetchone()
+            qc = conn.execute("SELECT pass_fail FROM qc_inspections WHERE batch_id = ? AND user_id = ?", (batch_id, user_id)).fetchone()
             if qc and qc["pass_fail"] == "FAIL":
                 failed_batches.append(batch_id)
 
@@ -175,42 +176,13 @@ def lot_alert(lot_number: str, user: dict = Depends(get_current_user)) -> dict[s
         conn.close()
 
 
-@app.post("/api/operator/batches")
-def create_operator_entry(entry: BatchEntry, user: dict = Depends(require_operator_or_above)) -> dict[str, Any]:
-    conn = connect()
-    try:
-        # Idempotency check
-        if entry.client_entry_id:
-            existing = conn.execute(
-                "SELECT entry_id FROM operator_entries WHERE client_entry_id = ?",
-                (entry.client_entry_id,),
-            ).fetchone()
-            if existing:
-                return {"status": "already_saved", "entry_id": existing["entry_id"], "duplicate": True}
-
-        cur = conn.execute(
-            """INSERT INTO operator_entries
-            (production_date, shift, machine_id, operator_id, raw_lot, units_produced,
-             qc_notes, client_entry_id, device_id, created_offline_at, synced_at, user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)""",
-            (entry.date, entry.shift, entry.machine_id, entry.operator_id,
-             entry.raw_lot, entry.units_produced, entry.qc_notes,
-             entry.client_entry_id, entry.device_id, entry.created_offline_at,
-             user.get("user_id")),
-        )
-        conn.commit()
-        return {"status": "saved", "entry_id": cur.lastrowid}
-    finally:
-        conn.close()
-
-
-def resolve_raw(conn, production: dict[str, Any] | None, qc: dict[str, Any] | None) -> dict[str, Any] | None:
+def resolve_raw(conn, production: dict[str, Any] | None, qc: dict[str, Any] | None, user_id: str) -> dict[str, Any] | None:
     if not production or not production.get("input_lot_ref"):
         return None
-    suppliers = {r["supplier_id"]: dict(r) for r in conn.execute("SELECT * FROM suppliers").fetchall()}
-    complaint_rows = conn.execute("SELECT defect_description, root_cause_identified FROM complaints WHERE root_cause_identified LIKE ?", (f"%{production['input_lot_ref']}%",)).fetchall()
+    suppliers = {r["supplier_id"]: dict(r) for r in conn.execute("SELECT * FROM suppliers WHERE user_id = ?", (user_id,)).fetchall()}
+    complaint_rows = conn.execute("SELECT defect_description, root_cause_identified FROM complaints WHERE root_cause_identified LIKE ? AND user_id = ?", (f"%{production['input_lot_ref']}%", user_id)).fetchall()
     complaint_text = " ".join(" ".join(str(v or "") for v in dict(row).values()) for row in complaint_rows)
-    candidates = [dict(r) for r in conn.execute("SELECT * FROM raw_materials WHERE lot_number = ?", (production["input_lot_ref"],)).fetchall()]
+    candidates = [dict(r) for r in conn.execute("SELECT * FROM raw_materials WHERE lot_number = ? AND user_id = ?", (production["input_lot_ref"], user_id)).fetchall()]
     best = best_raw_candidate(candidates, suppliers, qc, complaint_text)
     if not best:
         return None

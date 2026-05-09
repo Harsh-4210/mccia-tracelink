@@ -17,23 +17,23 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
 def _build_lot_alert(
-    lot_number: str, limit: int = 100, offset: int = 0
+    lot_number: str, user_id: str, limit: int = 100, offset: int = 0
 ) -> dict[str, Any]:
     start = time.perf_counter()
     conn = connect()
     try:
         productions = [dict(r) for r in conn.execute(
-            "SELECT * FROM production_batches WHERE input_lot_ref = ? AND batch_id IS NOT NULL",
-            (lot_number,),
+            "SELECT * FROM production_batches WHERE input_lot_ref = ? AND batch_id IS NOT NULL AND user_id = ?",
+            (lot_number, user_id),
         ).fetchall()]
         batch_ids = [p["batch_id"] for p in productions]
 
-        # Compute failed batches from actual QC data (removed hardcoded anchor batches)
+        # Compute failed batches from actual QC data
         failed_batches = []
         for batch_id in batch_ids:
             qc = conn.execute(
-                "SELECT pass_fail FROM qc_inspections WHERE batch_id = ?",
-                (batch_id,),
+                "SELECT pass_fail FROM qc_inspections WHERE batch_id = ? AND user_id = ?",
+                (batch_id, user_id),
             ).fetchone()
             if qc and qc["pass_fail"] == "FAIL":
                 failed_batches.append(batch_id)
@@ -42,8 +42,8 @@ def _build_lot_alert(
         total_count = 0
         for batch_id in batch_ids:
             count = conn.execute(
-                "SELECT COUNT(*) as cnt FROM dispatch_batches db JOIN dispatch_orders d ON d.order_id = db.order_id WHERE db.batch_id = ?",
-                (batch_id,),
+                "SELECT COUNT(*) as cnt FROM dispatch_batches db JOIN dispatch_orders d ON d.order_id = db.order_id AND d.user_id = db.user_id WHERE db.batch_id = ? AND db.user_id = ?",
+                (batch_id, user_id),
             ).fetchone()
             total_count += count["cnt"] if count else 0
 
@@ -54,11 +54,11 @@ def _build_lot_alert(
             rows = conn.execute("""
                 SELECT d.*, db.batch_id, q.pass_fail, q.defect_type_normalized, q.defect_rate_pct
                 FROM dispatch_batches db
-                JOIN dispatch_orders d ON d.order_id = db.order_id
-                LEFT JOIN qc_inspections q ON q.batch_id = db.batch_id
-                WHERE db.batch_id = ?
+                JOIN dispatch_orders d ON d.order_id = db.order_id AND d.user_id = db.user_id
+                LEFT JOIN qc_inspections q ON q.batch_id = db.batch_id AND q.user_id = db.user_id
+                WHERE db.batch_id = ? AND db.user_id = ?
                 ORDER BY d.dispatch_date, d.order_id
-            """, (batch_id,)).fetchall()
+            """, (batch_id, user_id)).fetchall()
             for row in rows:
                 if seen >= offset and len(affected) < limit:
                     affected.append(dict(row))
@@ -71,8 +71,8 @@ def _build_lot_alert(
         
         # Calculate financial exposure from complaints matching this lot (by root cause text)
         complaints = conn.execute(
-            "SELECT financial_impact_inr FROM complaints WHERE root_cause_identified LIKE ?", 
-            (f"%{lot_number}%",)
+            "SELECT financial_impact_inr FROM complaints WHERE root_cause_identified LIKE ? AND user_id = ?", 
+            (f"%{lot_number}%", user_id)
         ).fetchall()
         for c in complaints:
             if c["financial_impact_inr"]:
@@ -83,13 +83,13 @@ def _build_lot_alert(
             all_order_ids = set()
             for batch_id in batch_ids:
                 orders = conn.execute(
-                    "SELECT order_id FROM dispatch_batches WHERE batch_id = ?", (batch_id,)
+                    "SELECT order_id FROM dispatch_batches WHERE batch_id = ? AND user_id = ?", (batch_id, user_id)
                 ).fetchall()
                 for o in orders:
                     all_order_ids.add(o["order_id"])
             
             if all_order_ids:
-                all_complaints = conn.execute("SELECT affected_order_ids, financial_impact_inr FROM complaints WHERE affected_order_ids IS NOT NULL").fetchall()
+                all_complaints = conn.execute("SELECT affected_order_ids, financial_impact_inr FROM complaints WHERE affected_order_ids IS NOT NULL AND user_id = ?", (user_id,)).fetchall()
                 for c in all_complaints:
                     if c["affected_order_ids"] and c["financial_impact_inr"]:
                         complaint_orders = set(o.strip() for o in c["affected_order_ids"].split(","))
@@ -102,10 +102,10 @@ def _build_lot_alert(
             rows = conn.execute("""
                 SELECT d.*, db.batch_id, q.pass_fail, q.inspection_date
                 FROM dispatch_batches db
-                JOIN dispatch_orders d ON d.order_id = db.order_id
-                LEFT JOIN qc_inspections q ON q.batch_id = db.batch_id
-                WHERE db.batch_id = ?
-            """, (batch_id,)).fetchall()
+                JOIN dispatch_orders d ON d.order_id = db.order_id AND d.user_id = db.user_id
+                LEFT JOIN qc_inspections q ON q.batch_id = db.batch_id AND q.user_id = db.user_id
+                WHERE db.batch_id = ? AND db.user_id = ?
+            """, (batch_id, user_id)).fetchall()
             all_affected.extend([dict(r) for r in rows])
             
         for a in all_affected:

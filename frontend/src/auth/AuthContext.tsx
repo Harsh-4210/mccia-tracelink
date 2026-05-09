@@ -14,7 +14,6 @@ type User = {
   uid: string;
   email: string | null;
   displayName: string | null;
-  role: string;
 };
 
 type AuthContextType = {
@@ -73,7 +72,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           uid: fbUser.uid,
           email: fbUser.email,
           displayName: fbUser.displayName || data.full_name,
-          role: data.role || "operator",
         });
       } else {
         // Backend sync failed but Firebase auth succeeded - set basic user
@@ -81,7 +79,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           uid: fbUser.uid,
           email: fbUser.email,
           displayName: fbUser.displayName,
-          role: "operator",
         });
       }
     } catch {
@@ -90,7 +87,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         uid: fbUser.uid,
         email: fbUser.email,
         displayName: fbUser.displayName,
-        role: "operator",
       });
     }
   }, []);

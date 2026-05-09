@@ -18,14 +18,15 @@ async def create_corrective_action(body: CorrectiveActionCreate, user: dict = De
     conn = connect()
     try:
         ca_id = f"CA-{uuid.uuid4().hex[:8].upper()}"
+        user_id = user.get("user_id")
         conn.execute(
             """INSERT INTO corrective_actions
             (ca_id, triggered_by, assigned_to, root_cause, immediate_action,
-             corrective_action, preventive_action, due_date, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             corrective_action, preventive_action, due_date, created_by, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (ca_id, body.triggered_by, body.assigned_to, body.root_cause,
              body.immediate_action, body.corrective_action, body.preventive_action,
-             body.due_date, user.get("email")),
+             body.due_date, user.get("email"), user_id),
         )
         conn.commit()
         return {"ca_id": ca_id, "status": "open"}
@@ -41,15 +42,16 @@ async def list_corrective_actions(
 ):
     conn = connect()
     try:
+        user_id = user.get("user_id")
         if status:
             rows = conn.execute(
-                "SELECT * FROM corrective_actions WHERE status = ? ORDER BY created_at DESC LIMIT ?",
-                (status, limit),
+                "SELECT * FROM corrective_actions WHERE status = ? AND user_id = ? ORDER BY created_at DESC LIMIT ?",
+                (status, user_id, limit),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM corrective_actions ORDER BY created_at DESC LIMIT ?",
-                (limit,),
+                "SELECT * FROM corrective_actions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                (user_id, limit),
             ).fetchall()
         return {"corrective_actions": [dict(r) for r in rows]}
     finally:
@@ -60,7 +62,8 @@ async def list_corrective_actions(
 async def get_corrective_action(ca_id: str, user: dict = Depends(get_current_user)):
     conn = connect()
     try:
-        row = conn.execute("SELECT * FROM corrective_actions WHERE ca_id = ?", (ca_id,)).fetchone()
+        user_id = user.get("user_id")
+        row = conn.execute("SELECT * FROM corrective_actions WHERE ca_id = ? AND user_id = ?", (ca_id, user_id)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Corrective action not found")
         return dict(row)
@@ -72,7 +75,8 @@ async def get_corrective_action(ca_id: str, user: dict = Depends(get_current_use
 async def update_corrective_action(ca_id: str, body: CorrectiveActionUpdate, user: dict = Depends(require_quality_or_above)):
     conn = connect()
     try:
-        existing = conn.execute("SELECT * FROM corrective_actions WHERE ca_id = ?", (ca_id,)).fetchone()
+        user_id = user.get("user_id")
+        existing = conn.execute("SELECT * FROM corrective_actions WHERE ca_id = ? AND user_id = ?", (ca_id, user_id)).fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Corrective action not found")
 
@@ -87,11 +91,11 @@ async def update_corrective_action(ca_id: str, body: CorrectiveActionUpdate, use
             return dict(existing)
 
         set_clause = ", ".join(f"{k} = ?" for k in updates)
-        values = list(updates.values()) + [ca_id]
-        conn.execute(f"UPDATE corrective_actions SET {set_clause} WHERE ca_id = ?", values)
+        values = list(updates.values()) + [ca_id, user_id]
+        conn.execute(f"UPDATE corrective_actions SET {set_clause} WHERE ca_id = ? AND user_id = ?", values)
         conn.commit()
 
-        row = conn.execute("SELECT * FROM corrective_actions WHERE ca_id = ?", (ca_id,)).fetchone()
+        row = conn.execute("SELECT * FROM corrective_actions WHERE ca_id = ? AND user_id = ?", (ca_id, user_id)).fetchone()
         return dict(row)
     finally:
         conn.close()

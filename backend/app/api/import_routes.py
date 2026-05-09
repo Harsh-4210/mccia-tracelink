@@ -35,7 +35,8 @@ def validate_csv_content(content: str, file_type: str) -> tuple[list[dict], list
     required = REQUIRED_COLUMNS.get(file_type, [])
     missing_cols = [c for c in required if c not in headers]
     if missing_cols:
-        return [], [{"row": 0, "field": None, "error": f"Missing required columns: {', '.join(missing_cols)}"}]
+        error_msg = f"Missing required columns for {file_type}: {', '.join(missing_cols)}"
+        return [], [{"row": 0, "field": None, "error": error_msg}]
 
     valid_rows = []
     errors = []
@@ -95,8 +96,12 @@ async def upload_import(
         conn.close()
 
     valid_rows, errors = validate_csv_content(content, file_type)
+    if errors and errors[0]["row"] == 0:
+        raise HTTPException(status_code=400, detail=errors[0]["error"])
+
     row_count = len(valid_rows) + len(errors)
     import_id = str(uuid.uuid4())[:12]
+    user_id = user.get("user_id")
 
     # Determine status
     error_threshold = max(1, int(row_count * 0.1))  # 10% error threshold
@@ -112,29 +117,29 @@ async def upload_import(
         # Store source file record
         conn.execute(
             """INSERT INTO source_files
-            (import_id, filename, file_type, uploader, checksum, row_count, valid_rows, error_count, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (import_id, file.filename, file_type, user.get("email"), checksum, row_count, len(valid_rows), len(errors), status),
+            (import_id, filename, file_type, uploader, user_id, checksum, row_count, valid_rows, error_count, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (import_id, file.filename, file_type, user.get("email"), user_id, checksum, row_count, len(valid_rows), len(errors), status),
         )
 
         # Store raw source rows
         for idx, row_data in enumerate(valid_rows):
             conn.execute(
-                "INSERT INTO source_rows (import_id, row_number, raw_json, validation_status) VALUES (?, ?, ?, ?)",
-                (import_id, idx + 1, json.dumps(row_data), "valid"),
+                "INSERT INTO source_rows (import_id, row_number, raw_json, validation_status, user_id) VALUES (?, ?, ?, ?, ?)",
+                (import_id, idx + 1, json.dumps(row_data), "valid", user_id),
             )
 
         # Store errors
         for err in errors:
             conn.execute(
-                "INSERT INTO import_errors (import_id, row_number, field_name, error_message) VALUES (?, ?, ?, ?)",
-                (import_id, err.get("row"), err.get("field"), err.get("error")),
+                "INSERT INTO import_errors (import_id, row_number, field_name, error_message, user_id) VALUES (?, ?, ?, ?, ?)",
+                (import_id, err.get("row"), err.get("field"), err.get("error"), user_id),
             )
 
         # Process Domain Import
         imputation_stats = {}
         if status in ("validated", "partial"):
-            imputation_stats = process_domain_import(conn, file_type, valid_rows)
+            imputation_stats = process_domain_import(conn, file_type, valid_rows, user_id=user_id)
 
         conn.commit()
 
@@ -172,7 +177,7 @@ async def get_import(import_id: str, user: dict = Depends(require_quality_or_abo
 async def list_imports(user: dict = Depends(require_quality_or_above)):
     conn = connect()
     try:
-        rows = conn.execute("SELECT * FROM source_files ORDER BY uploaded_at DESC LIMIT 100").fetchall()
+        rows = conn.execute("SELECT * FROM source_files WHERE user_id = ? ORDER BY uploaded_at DESC LIMIT 100", (user.get("user_id"),)).fetchall()
         return {"imports": [dict(r) for r in rows]}
     finally:
         conn.close()
