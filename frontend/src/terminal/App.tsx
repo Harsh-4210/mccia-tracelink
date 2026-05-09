@@ -155,8 +155,17 @@ function Landing() {
   );
 }
 
+function useTheme() {
+  const [theme, setTheme] = useState(() => localStorage.getItem("tl_theme") || "light");
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("tl_theme", theme);
+  }, [theme]);
+  return { theme, toggleTheme: () => setTheme(t => t === "light" ? "dark" : "light") };
+}
+
 function DashboardShell({ children, page }: { children: ReactNode; page: string }) {
-  const online = useOnline();
+  const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const { t } = useI18n();
   const [showGuide, setShowGuide] = useState(() => !localStorage.getItem("tl_guide_seen"));
@@ -181,30 +190,58 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
 
   return (
     <div className="d1-root">
-      <div className="d1-scan" />
-      <StatusBar online={online} scope={page} />
       <div className="d1-dash">
         <aside className="d1-side">
           <div className="d1-brand">{t("app.title")}</div>
-          <nav className="d1-nav">
+          <nav className="d1-nav" style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
             {navItems.map((item) => (
               <NavLink key={item.to} to={item.to} end={item.to === "/app/dashboard"} className={({ isActive }) => (isActive ? "active" : "")}>
-                <span className="d1-nav-icon">{item.icon}</span>{item.label}
+                {item.icon} <span style={{ flex: 1 }}>{item.label}</span>
               </NavLink>
             ))}
-            <button className="d1-navbtn" onClick={() => setShowGuide(true)} style={{ borderTop: "1px dashed var(--line-strong)", marginTop: 8, paddingTop: 10 }}>
-              <span className="d1-nav-icon">{Icon.guide}</span>{t("nav.guide")}
-            </button>
-            <button className="d1-navbtn" onClick={logout}>
-              <span className="d1-nav-icon">{Icon.logout}</span>{t("nav.logout")}
+            <div style={{ flex: 1 }}></div>
+            <button className="d1-btn ghost" onClick={() => setShowGuide(true)} style={{ marginTop: 8, justifyContent: "flex-start", background: "transparent", border: "none" }}>
+              {Icon.guide} {t("nav.guide")}
             </button>
           </nav>
-          <Link to="/app/account" className="d1-user-badge" style={{ textDecoration: "none" }}>
-            <div className="email">{user?.email || "authenticated"}</div>
-            <div className="role">{role}</div>
+          <Link to="/app/account" className="d1-userbadge" style={{ textDecoration: "none" }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--amber)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }}>
+              {user?.email?.[0].toUpperCase() || "U"}
+            </div>
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.email || "authenticated"}</div>
+              <div style={{ fontSize: 11, color: "var(--ink-dim)", textTransform: "capitalize" }}>{role}</div>
+            </div>
           </Link>
         </aside>
-        <main className="d1-main">{children}</main>
+        
+        <main className="d1-main">
+          <header className="d1-topbar">
+            <div className="d1-topbar-search">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" placeholder="Search or Press '/' for commands" />
+            </div>
+            <div className="d1-topbar-actions">
+              <button className="d1-icon-btn" onClick={toggleTheme} title="Toggle Light/Dark Mode">
+                {theme === "light" ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                )}
+              </button>
+              <button className="d1-icon-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              </button>
+              <button className="d1-btn ghost" onClick={logout} style={{ border: "1px solid var(--line)", background: "transparent" }}>
+                {t("nav.logout")}
+              </button>
+            </div>
+          </header>
+          
+          <div className="d1-content">
+            {children}
+          </div>
+        </main>
       </div>
       {showGuide && <OnboardingGuide onClose={closeGuide} />}
     </div>
@@ -257,65 +294,81 @@ function TraceScreen() {
           <div className="crumb">{t("trace.crumb")}</div>
           <h1>{t("trace.heading")}</h1>
         </div>
-        <div className="crumb">{t("trace.permalink")}</div>
       </div>
 
-      <section className="d1-panel d1-frame">
-        <div className="panel-key">{t("trace.panel_key")}</div>
-        <h2>{t("trace.resolve")}</h2>
-        <div className="d1-row" style={{ marginTop: 14 }}>
-          <input
-            className="d1-input"
-            value={orderId}
-            onChange={(e) => setOrderId(e.target.value)}
-            placeholder="D-1847"
-            onKeyDown={(e) => e.key === "Enter" && run()}
-            aria-label="Dispatch order"
-          />
-          <button className="d1-btn amber" onClick={() => run()} disabled={loading}>
-            {loading ? t("trace.tracing") : t("trace.execute")}
-          </button>
-        </div>
-        {error && <div className="d1-error" style={{ marginTop: 14 }}>! {error}</div>}
-
-        {result && (
-          <div className="d1-result">
-            <div className="d1-metric">
-              <span>QUERY <strong>{result.query_ms} ms</strong></span>
-              <span>ORDER <strong>{result.dispatch.order_id}</strong></span>
-              <span>OEM <strong>{result.dispatch.customer_id}</strong></span>
-              <span>BATCHES <strong>{result.batches.length}</strong></span>
-              <button className="d1-inlinebtn" onClick={exportTrace}>{t("trace.export")}</button>
+      <div className="split-layout">
+        <div className="split-left">
+          <div className="d1-frame">
+            <h2 style={{ marginTop: 0, marginBottom: "16px", fontSize: "18px" }}>Search Trace</h2>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <input
+                className="d1-input"
+                value={orderId}
+                onChange={(e) => setOrderId(e.target.value)}
+                placeholder="e.g. D-1847"
+                onKeyDown={(e) => e.key === "Enter" && run()}
+                aria-label="Dispatch order"
+              />
+              <button className="d1-btn amber" onClick={() => run()} disabled={loading}>
+                {loading ? t("trace.tracing") : "Search"}
+              </button>
             </div>
-            {!!result.incomplete_warnings?.length && (
-              <div className="d1-error">
-                ! INCOMPLETE TRACE / {result.incomplete_warnings.join(" / ")}
-              </div>
-            )}
-            {result.batches.map((batch) => (
-              <div className="d1-trace" key={batch.batch_id}>
-                <div className="lane">
-                  <div className="id">{batch.batch_id}</div>
-                  <div className="conf">CONF {Math.round((batch.raw_material?.confidence || 0) * 100)}%</div>
-                  <div className="conf">{batch.link_type || "unreviewed"}</div>
-                  <div className="conf">
-                    {batch.qc?.pass_fail === "PASS" ? <span className="d1-pf pass">PASS</span> : <span className="d1-pf fail">FAIL</span>}
+            {error && <div className="d1-error" style={{ marginTop: 16 }}>{error}</div>}
+          </div>
+
+          {result && (
+            <div className="d1-frame" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h3 style={{ margin: "0 0 4px", fontSize: "20px" }}>Order {result.dispatch.order_id}</h3>
+                  <div style={{ color: "var(--ink-dim)", fontSize: "13px" }}>
+                    Customer: {result.dispatch.customer_id} • Query: {result.query_ms}ms
                   </div>
                 </div>
-                <div className="body">
-                  <div className="row"><span className="lbl">RAW LOT</span><span className="v">{batch.production?.input_lot_ref || "-"}</span></div>
-                  <div className="row"><span className="lbl">SUPPLIER</span><span className="v">{batch.raw_material?.supplier?.supplier_name || "-"} / {batch.raw_material?.supplier_id || "-"}</span></div>
-                  <div className="row"><span className="lbl">MACHINE</span><span className="v">{batch.production?.machine_id || "-"}</span></div>
-                  <div className="row"><span className="lbl">SHIFT</span><span className="v">{batch.production?.shift || "-"}</span></div>
-                  <div className="row"><span className="lbl">OPERATOR</span><span className="v">{batch.production?.operator_id || "-"}</span></div>
-                  <div className="row"><span className="lbl">DEFECT</span><span className="v">{batch.qc?.defect_type_normalized || "-"} / {batch.qc?.defect_rate_pct ?? 0}%</span></div>
-                  <div className="reason">REASON / {batch.raw_material?.confidence_reasons?.join(" / ") || "no reasons recorded"}</div>
+                <button className="d1-btn" onClick={exportTrace}>{t("trace.export")}</button>
+              </div>
+
+              <div style={{ padding: "16px", background: "var(--bg)", borderRadius: "var(--radius)", border: "1px solid var(--line)" }}>
+                <h4 style={{ margin: "0 0 16px", color: "var(--ink-dim)", textTransform: "uppercase", fontSize: "12px", letterSpacing: "0.05em" }}>Shipment Status</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {result.batches.map((batch, i) => (
+                    <div key={batch.batch_id} style={{ display: "flex", gap: "16px" }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "24px" }}>
+                        <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: batch.qc?.pass_fail === "PASS" ? "#10b981" : "var(--amber)", zIndex: 2 }} />
+                        {i !== result.batches.length - 1 && <div style={{ flex: 1, width: "2px", background: "var(--line)", margin: "4px 0" }} />}
+                      </div>
+                      <div style={{ flex: 1, paddingBottom: "16px" }}>
+                        <div style={{ fontWeight: 600, marginBottom: "4px" }}>Batch {batch.batch_id}</div>
+                        <div style={{ fontSize: "13px", color: "var(--ink-dim)" }}>
+                          Supplier: {batch.raw_material?.supplier?.supplier_name || "Unknown"} • QC: {batch.qc?.pass_fail || "PENDING"}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
+            </div>
+          )}
+        </div>
+
+        <div className="split-right">
+          <div style={{ width: "100%", height: "100%", position: "relative", background: "url('https://maps.googleapis.com/maps/api/staticmap?center=40.7128,-74.0060&zoom=11&size=600x800&maptype=roadmap&style=element:geometry%7Ccolor:0xf5f5f5&style=element:labels.icon%7Cvisibility:off&style=element:labels.text.fill%7Ccolor:0x616161&style=element:labels.text.stroke%7Ccolor:0xf5f5f5&style=feature:administrative.land_parcel%7Celement:labels.text.fill%7Ccolor:0xbdbdbd&style=feature:poi%7Celement:geometry%7Ccolor:0xeeeeee&style=feature:poi%7Celement:labels.text.fill%7Ccolor:0x757575&style=feature:poi.park%7Celement:geometry%7Ccolor:0xe5e5e5&style=feature:poi.park%7Celement:labels.text.fill%7Ccolor:0x9e9e9e&style=feature:road%7Celement:geometry%7Ccolor:0xffffff&style=feature:road.arterial%7Celement:labels.text.fill%7Ccolor:0x757575&style=feature:road.highway%7Celement:geometry%7Ccolor:0xdadada&style=feature:road.highway%7Celement:labels.text.fill%7Ccolor:0x616161&style=feature:road.local%7Celement:labels.text.fill%7Ccolor:0x9e9e9e&style=feature:transit.line%7Celement:geometry%7Ccolor:0xe5e5e5&style=feature:transit.station%7Celement:geometry%7Ccolor:0xeeeeee&style=feature:water%7Celement:geometry%7Ccolor:0xc9c9c9&style=feature:water%7Celement:labels.text.fill%7Ccolor:0x9e9e9e&key=YOUR_API_KEY') center/cover no-repeat" }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.05)" }} />
+            {/* Map Placeholder Content */}
+            <div style={{ position: "absolute", bottom: "24px", right: "24px", background: "var(--bg-2)", padding: "8px", borderRadius: "var(--radius)", boxShadow: "var(--shadow)", display: "flex", gap: "8px" }}>
+              <button className="d1-btn" style={{ padding: "8px" }}>Satellite</button>
+              <button className="d1-btn" style={{ padding: "8px" }}>Map View</button>
+            </div>
+            {result && (
+              <div style={{ position: "absolute", top: "40%", left: "40%", background: "#0f172a", color: "white", padding: "16px", borderRadius: "8px", width: "220px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.3)" }}>
+                <div style={{ fontWeight: 600, marginBottom: "4px" }}>Warehouse Route</div>
+                <div style={{ fontSize: "12px", color: "#94a3b8" }}>Order ID: {result.dispatch.order_id}</div>
+                <div style={{ marginTop: "12px", width: "8px", height: "8px", background: "var(--amber)", borderRadius: "50%" }}></div>
+              </div>
+            )}
           </div>
-        )}
-      </section>
+        </div>
+      </div>
     </DashboardShell>
   );
 }
@@ -556,8 +609,8 @@ function DashboardScreen() {
       {error && <div className="d1-error">! {error}</div>}
       
       {isEmpty && (
-        <div className="d1-guide-overlay">
-          <div className="d1-guide-card d1-frame" style={{ textAlign: "center", padding: "40px" }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginTop: "40px" }}>
+          <div className="d1-guide-card d1-frame" style={{ textAlign: "center", padding: "40px", maxWidth: "600px", width: "100%" }}>
             <div style={{ color: "var(--amber)", marginBottom: 16, display: "flex", justifyContent: "center" }}>
               <div style={{ width: 48, height: 48 }}>{Icon.dashboard}</div>
             </div>
