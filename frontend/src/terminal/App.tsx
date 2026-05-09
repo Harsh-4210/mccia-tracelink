@@ -112,49 +112,6 @@ function StatusBar({ online, scope }: { online: boolean; scope: string }) {
   );
 }
 
-function Landing() {
-  const online = useOnline();
-  const { isAuthenticated } = useAuth();
-  const { t } = useI18n();
-  return (
-    <div className="d1-root">
-      <div className="d1-scan" />
-      <StatusBar online={online} scope="PUBLIC" />
-      <main className="d1-land">
-        <div className="d1-asciibadge">[ MFG // TRACEABILITY CONTROL ]</div>
-        <h1 className="d1-headline">
-          {t("app.tagline")}<span className="cursor" />
-        </h1>
-        <p className="d1-sub">
-          {t("app.subtitle")}
-        </p>
-        <div className="d1-row" style={{ marginTop: 8 }}>
-          <Link to={isAuthenticated ? "/app/trace" : "/login"} className="d1-cta">
-            GET STARTED
-          </Link>
-        </div>
-        <div className="d1-grid3">
-          <div>
-            <span className="key">Firebase</span>
-            <span className="val">AUTH</span>
-            <span className="note">Secure authentication with Email, Password, or Google.</span>
-          </div>
-          <div>
-            <span className="key">Audit</span>
-            <span className="val">ON</span>
-            <span className="note">Every action logged with user, timestamp, and request ID.</span>
-          </div>
-          <div>
-            <span className="key">Offline</span>
-            <span className="val">READY</span>
-            <span className="note">Operator entries queue locally and sync when reconnected.</span>
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-}
-
 function useTheme() {
   const [theme, setTheme] = useState(() => localStorage.getItem("tl_theme") || "light");
   useEffect(() => {
@@ -163,6 +120,96 @@ function useTheme() {
   }, [theme]);
   return { theme, toggleTheme: () => setTheme(t => t === "light" ? "dark" : "light") };
 }
+
+function Landing() {
+  const { isAuthenticated } = useAuth();
+  const { lang, setLang, t } = useI18n();
+  const { theme, toggleTheme } = useTheme();
+
+  return (
+    <div className="d1-root">
+      <main className="d1-land">
+        {/* ── Glassmorphic Top Bar ── */}
+        <nav className="d1-landing-topbar">
+          <div className="logo">
+            <div className="logo-dot">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            </div>
+            TraceLink
+          </div>
+          <div className="d1-landing-topbar-actions">
+            <div className="d1-lang-group">
+              {LANGS.map((l) => (
+                <button key={l} className={`d1-lang-btn${lang === l ? " active" : ""}`} onClick={() => setLang(l)}>{LANG_LABELS[l]}</button>
+              ))}
+            </div>
+            <button className="d1-icon-btn" onClick={toggleTheme} title="Toggle theme">
+              {theme === "light" ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              )}
+            </button>
+            <Link to={isAuthenticated ? "/app/dashboard" : "/login"} className="d1-cta" style={{ padding: "8px 20px", fontSize: 13 }}>
+              {isAuthenticated ? "Dashboard" : "Get Started"}
+            </Link>
+          </div>
+        </nav>
+
+        {/* ── Hero Section ── */}
+        <section className="d1-hero">
+          <div className="d1-hero-inner">
+            <div className="d1-hero-badge">
+              <span className="pulse" />
+              Manufacturing Traceability Platform
+            </div>
+            <h1>
+              {t("app.tagline").split(" ").slice(0, 3).join(" ")}{" "}
+              <span className="gradient">{t("app.tagline").split(" ").slice(3).join(" ")}</span>
+            </h1>
+            <p>{t("app.subtitle")}</p>
+            <div className="d1-hero-actions">
+              <Link to={isAuthenticated ? "/app/trace" : "/login"} className="d1-cta">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                Get Started Free
+              </Link>
+              <Link to={isAuthenticated ? "/app/dashboard" : "/login"} className="d1-cta ghost">
+                View Dashboard
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Feature Cards ── */}
+        <section className="d1-features">
+          <div className="d1-feature-card">
+            <div className="icon-wrap">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            </div>
+            <h3>Firebase Auth</h3>
+            <p>Enterprise-grade authentication with email, password, and Google SSO. Role-based access control from day one.</p>
+          </div>
+          <div className="d1-feature-card">
+            <div className="icon-wrap">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </div>
+            <h3>Full Audit Trail</h3>
+            <p>Every action logged with user identity, timestamp, and request ID. Complete regulatory compliance built in.</p>
+          </div>
+          <div className="d1-feature-card">
+            <div className="icon-wrap">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <h3>Offline-First</h3>
+            <p>Operator entries queue locally and sync automatically when reconnected. Never lose factory floor data.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+
 
 function DashboardShell({ children, page }: { children: ReactNode; page: string }) {
   const { theme, toggleTheme } = useTheme();
@@ -419,26 +466,66 @@ function AlertScreen() {
           <div className="crumb">{t("alert.crumb")}</div>
           <h1>{t("alert.heading")}</h1>
         </div>
-        <div className="crumb">{t("alert.export_ready")}</div>
       </div>
 
-      <section className="d1-panel d1-frame">
+      <div className="d1-frame">
         <div className="panel-key">{t("alert.panel_key")}</div>
-        <h2>{t("alert.resolve")}</h2>
-        <div className="d1-row" style={{ marginTop: 14 }}>
+        <h2 style={{ margin: "0 0 16px", fontSize: 18 }}>{t("alert.resolve")}</h2>
+        <div style={{ display: "flex", gap: 12 }}>
           <input
             className="d1-input"
             value={lot}
             onChange={(e) => setLot(e.target.value)}
-            placeholder="LOT-2023-114"
+            placeholder="e.g. LOT-2023-114"
             onKeyDown={(e) => e.key === "Enter" && run()}
             aria-label="Lot number"
           />
-          <button className="d1-btn" onClick={() => run()} disabled={loading}>
+          <button className="d1-btn amber" onClick={() => run()} disabled={loading}>
             {loading ? t("alert.scanning") : t("alert.simulate")}
           </button>
         </div>
-        {error && <div className="d1-error" style={{ marginTop: 14 }}>! {error}</div>}
+        {error && <div className="d1-error" style={{ marginTop: 16 }}>{error}</div>}
+
+        {result && (
+          <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+            <div className="d1-grid3">
+              <div><span className="key">Lot</span><span className="val" style={{ fontSize: 22 }}>{result.lot_number}</span></div>
+              <div><span className="key">Batches Affected</span><span className="val" style={{ fontSize: 22 }}>{result.summary.batch_count}</span></div>
+              <div><span className="key">At-Risk Orders</span><span className="val" style={{ fontSize: 22, color: "var(--red)" }}>{result.summary.dispatch_order_count}</span></div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "var(--ink-dim)", fontSize: 13 }}>Query completed in {result.query_ms}ms</span>
+              <button className="d1-inlinebtn" onClick={exportAlert}>{t("alert.export")}</button>
+            </div>
+            <div className="d1-table-wrapper">
+              <table className="d1-table">
+                <thead>
+                  <tr><th>Order</th><th>OEM</th><th>Date</th><th>Batch</th><th>QC Status</th></tr>
+                </thead>
+                <tbody>
+                  {result.affected_dispatch_orders.map((row) => (
+                    <tr key={`${row.order_id}-${row.batch_id}`}>
+                      <td style={{ color: "var(--primary)", fontWeight: 600 }}>{row.order_id}</td>
+                      <td>{row.customer_id}</td>
+                      <td>{row.dispatch_date}</td>
+                      <td style={{ fontFamily: "monospace" }}>{row.batch_id}</td>
+                      <td>
+                        {row.pass_fail ? (
+                          <span className={`badge ${row.pass_fail === "PASS" ? "success" : "delay"}`}>
+                            {row.pass_fail}{row.defect_rate_pct ? ` / ${row.defect_rate_pct}%` : ""}
+                          </span>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </DashboardShell>
+  );
 
         {result && (
           <div className="d1-result">
