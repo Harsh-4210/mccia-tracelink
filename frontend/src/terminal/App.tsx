@@ -1,4 +1,4 @@
-import { FormEvent, type ReactNode, useEffect, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, Navigate, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import {
   approveLink,
@@ -127,6 +127,139 @@ function useTheme() {
   return { theme, toggleTheme: () => setTheme(t => t === "light" ? "dark" : "light") };
 }
 
+const NOTIFICATION_HISTORY_KEY = "tl_notification_history";
+const NOTIFICATION_PROMPTED_KEY = "tl_notification_permission_prompted";
+const NOTIFICATION_EVENT = "tl:notifications-updated";
+
+type AppNotification = {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  read: boolean;
+  severity?: "info" | "warning" | "danger";
+};
+
+function notificationPermission(): NotificationPermission | "unsupported" {
+  if (!("Notification" in window)) return "unsupported";
+  return Notification.permission;
+}
+
+function sendDesktopNotification(title: string, body: string) {
+  if (notificationPermission() !== "granted") return;
+  new Notification(title, {
+    body,
+    icon: "/favicon.svg",
+    tag: "tracelink-notification",
+  });
+}
+
+function readNotifications(): AppNotification[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(NOTIFICATION_HISTORY_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeNotifications(items: AppNotification[]) {
+  localStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(items.slice(0, 50)));
+  window.dispatchEvent(new CustomEvent(NOTIFICATION_EVENT));
+}
+
+function playNotificationDing() {
+  const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContextClass) return;
+  const context = new AudioContextClass();
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(880, context.currentTime);
+  oscillator.frequency.exponentialRampToValueAtTime(1320, context.currentTime + 0.08);
+  gain.gain.setValueAtTime(0.0001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.22);
+
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + 0.24);
+  oscillator.onended = () => context.close();
+}
+
+async function publishAppNotification(input: Omit<AppNotification, "id" | "createdAt" | "read">) {
+  const notification: AppNotification = {
+    ...input,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    createdAt: new Date().toISOString(),
+    read: false,
+  };
+  writeNotifications([notification, ...readNotifications()]);
+  playNotificationDing();
+
+  if (!("Notification" in window)) return;
+
+  let permission = Notification.permission;
+  if (permission === "default" && !localStorage.getItem(NOTIFICATION_PROMPTED_KEY)) {
+    localStorage.setItem(NOTIFICATION_PROMPTED_KEY, "1");
+    permission = await Notification.requestPermission();
+  }
+  if (permission === "granted") {
+    sendDesktopNotification(notification.title, notification.body);
+  }
+}
+
+function useNotificationCenter() {
+  const [items, setItems] = useState<AppNotification[]>(() => readNotifications());
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(() => notificationPermission());
+
+  useEffect(() => {
+    const refresh = () => {
+      setItems(readNotifications());
+      setPermission(notificationPermission());
+    };
+    window.addEventListener(NOTIFICATION_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(NOTIFICATION_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+
+  async function enableDesktop() {
+    if (!("Notification" in window)) {
+      setPermission("unsupported");
+      return false;
+    }
+    const nextPermission = await Notification.requestPermission();
+    localStorage.setItem(NOTIFICATION_PROMPTED_KEY, "1");
+    setPermission(nextPermission);
+    if (nextPermission === "granted") {
+      sendDesktopNotification("TraceLink desktop notifications enabled", "Important TraceLink alerts can now appear on your desktop.");
+    }
+    return nextPermission === "granted";
+  }
+
+  function markAllRead() {
+    writeNotifications(readNotifications().map((item) => ({ ...item, read: true })));
+  }
+
+  function clearHistory() {
+    writeNotifications([]);
+  }
+
+  return {
+    items,
+    unreadCount: items.filter((item) => !item.read).length,
+    permission,
+    enableDesktop,
+    markAllRead,
+    clearHistory,
+  };
+}
+
 function Landing() {
   const { isAuthenticated } = useAuth();
   const { lang, setLang, t } = useI18n();
@@ -241,6 +374,8 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const { t } = useI18n();
+  const notifications = useNotificationCenter();
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [showGuide, setShowGuide] = useState(() => !localStorage.getItem("tl_guide_seen"));
 
   function closeGuide() {
@@ -274,10 +409,6 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
                 {item.icon} <span style={{ flex: 1 }}>{item.label}</span>
               </NavLink>
             ))}
-            <div style={{ flex: 1 }}></div>
-            <button className="d1-btn ghost" onClick={() => setShowGuide(true)} style={{ marginTop: 8, justifyContent: "flex-start", background: "transparent", border: "none" }}>
-              {Icon.guide} {t("nav.guide")}
-            </button>
           </nav>
           <Link to="/app/account" className="d1-userbadge" style={{ textDecoration: "none" }}>
             <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--amber)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }}>
@@ -304,9 +435,57 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                 )}
               </button>
-              <button className="d1-icon-btn">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              <button
+                className="d1-icon-btn"
+                onClick={() => setShowGuide(true)}
+                title={t("nav.guide")}
+                aria-label={t("nav.guide")}
+              >
+                ?
               </button>
+              <div className="d1-notification-wrap">
+                <button
+                  className={`d1-icon-btn${notifications.unreadCount > 0 ? " active" : ""}`}
+                  onClick={() => {
+                    setNotificationPanelOpen((open) => !open);
+                    notifications.markAllRead();
+                  }}
+                  title="Open notifications"
+                  aria-label={`Open notifications${notifications.unreadCount ? `, ${notifications.unreadCount} unread` : ""}`}
+                  aria-expanded={notificationPanelOpen}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                  {notifications.unreadCount > 0 && <span className="d1-notification-dot">{notifications.unreadCount > 9 ? "9+" : notifications.unreadCount}</span>}
+                </button>
+                {notificationPanelOpen && (
+                  <div className="d1-notification-panel">
+                    <div className="d1-notification-head">
+                      <div>
+                        <strong>Notifications</strong>
+                        <span>{notifications.items.length ? `${notifications.items.length} recent` : "No alerts yet"}</span>
+                      </div>
+                      {notifications.items.length > 0 && (
+                        <button className="d1-inlinebtn" onClick={notifications.clearHistory}>Clear</button>
+                      )}
+                    </div>
+                    <div className="d1-notification-list">
+                      {notifications.items.length === 0 ? (
+                        <div className="d1-notification-empty">Important trace and QC alerts will appear here.</div>
+                      ) : (
+                        notifications.items.map((item) => (
+                          <div key={item.id} className={`d1-notification-item ${item.severity || "info"}`}>
+                            <div>
+                              <strong>{item.title}</strong>
+                              <p>{item.body}</p>
+                              <span>{new Date(item.createdAt).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <button className="d1-btn ghost" onClick={logout} style={{ border: "1px solid var(--line)", background: "transparent" }}>
                 {t("nav.logout")}
               </button>
@@ -330,6 +509,7 @@ function TraceScreen() {
   const [result, setResult] = useState<TraceResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const notifiedOrders = useRef<Set<string>>(new Set());
 
   async function run(updateUrl = true) {
     const clean = orderId.trim();
@@ -361,6 +541,19 @@ function TraceScreen() {
       setError(e?.message || "Export failed");
     }
   }
+
+  const hasFailedBatch = result?.batches.some((batch) => batch.qc?.pass_fail === "FAIL") ?? false;
+
+  useEffect(() => {
+    const order = result?.dispatch?.order_id;
+    if (!hasFailedBatch || !order || notifiedOrders.current.has(order)) return;
+    notifiedOrders.current.add(order);
+    publishAppNotification({
+      title: "QC FAIL detected",
+      body: `Dispatch ${order} includes at least one failed batch.`,
+      severity: "danger",
+    });
+  }, [hasFailedBatch, result?.dispatch?.order_id]);
 
   return (
     <DashboardShell page="TRACE">
@@ -403,13 +596,19 @@ function TraceScreen() {
                 <button className="d1-btn" onClick={exportTrace}>{t("trace.export")}</button>
               </div>
 
+              {hasFailedBatch && (
+                <div className="d1-error" style={{ width: "100%", fontWeight: 700 }}>
+                  QC FAIL detected in this dispatch chain. Prioritize containment, review affected batches, and export the trace for follow-up.
+                </div>
+              )}
+
               <div style={{ padding: "16px", background: "var(--bg)", borderRadius: "var(--radius)", border: "1px solid var(--line)" }}>
                 <h4 style={{ margin: "0 0 16px", color: "var(--ink-dim)", textTransform: "uppercase", fontSize: "12px", letterSpacing: "0.05em" }}>Shipment Status</h4>
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   {result.batches.map((batch, i) => (
                     <div key={batch.batch_id} style={{ display: "flex", gap: "16px" }}>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "24px" }}>
-                        <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: batch.qc?.pass_fail === "PASS" ? "#10b981" : "var(--amber)", zIndex: 2 }} />
+                        <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: batch.qc?.pass_fail === "PASS" ? "#10b981" : "var(--red)", zIndex: 2 }} />
                         {i !== result.batches.length - 1 && <div style={{ flex: 1, width: "2px", background: "var(--line)", margin: "4px 0" }} />}
                       </div>
                       <div style={{ flex: 1, paddingBottom: "16px" }}>
@@ -517,6 +716,8 @@ function AlertScreen() {
         {result && (
           <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 20 }}>
             <div className="d1-grid3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+              <div><span className="key">Affected Orders</span><span className="val" style={{ fontSize: 22 }}>{result.summary.dispatch_order_count || result.affected_dispatch_orders.length}</span></div>
+              <div><span className="key">Failed Batches</span><span className="val" style={{ fontSize: 22, color: "var(--red)" }}>{result.summary.failed_batch_count || result.failed_batches?.length || 0}</span></div>
               <div><span className="key">Lot Investigated</span><span className="val" style={{ fontSize: 22 }}>{result.lot_number}</span></div>
               <div><span className="key">Financial Exposure</span><span className="val" style={{ fontSize: 22, color: "var(--amber)" }}>₹ {result.summary.financial_exposure?.toLocaleString() || 0}</span></div>
               <div><span className="key">Escaped Shipments</span><span className="val" style={{ fontSize: 22, color: "var(--red)" }}>{result.summary.escaped_shipments_count || 0}</span></div>
@@ -541,7 +742,7 @@ function AlertScreen() {
                       <td style={{ fontFamily: "monospace" }}>{row.batch_id}</td>
                       <td>
                         {row.pass_fail ? (
-                          <span className={`badge ${row.pass_fail === "PASS" ? "success" : "delay"}`}>
+                          <span className={`badge ${row.pass_fail === "PASS" ? "success" : "danger"}`}>
                             {row.pass_fail}{row.defect_rate_pct ? ` / ${row.defect_rate_pct}%` : ""}
                           </span>
                         ) : "—"}
@@ -699,7 +900,11 @@ function DashboardScreen() {
               <div style={{ width: 48, height: 48 }}>{Icon.dashboard}</div>
             </div>
             <h2 style={{ fontSize: 24, margin: "0 0 12px" }}>{t("dash.empty.title")}</h2>
-            <p style={{ color: "var(--ink-mid)", fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>{t("dash.empty.desc")}</p>
+            <p style={{ color: "var(--ink-mid)", fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
+              {user?.role === "operator"
+                ? "No production data is available yet. Use the shop-floor logger to capture batch activity, then sync when you are online."
+                : "No production data is available yet. Import the traceability CSV files to populate dashboard metrics and review queues."}
+            </p>
             {["manager", "quality", "admin"].includes(user?.role || "") ? (
               <Link to="/app/import" className="d1-btn amber" style={{ display: "inline-block", textDecoration: "none", padding: "10px 24px" }}>{t("dash.empty.btn")}</Link>
             ) : (
@@ -992,6 +1197,7 @@ function RoleRoute({ children, allowed }: { children: ReactNode; allowed: string
 function AccountScreen() {
   const { t } = useI18n();
   const { user, logout } = useAuth();
+  const notifications = useNotificationCenter();
   const [users, setUsers] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -1103,9 +1309,23 @@ function AccountScreen() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "var(--bg)", borderRadius: "var(--radius)", border: "1px solid var(--line)" }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>Notifications</div>
-                <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>Email alerts for QC failures</div>
+                <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>
+                  {notifications.permission === "denied"
+                    ? "Blocked in browser settings"
+                    : notifications.permission === "unsupported"
+                      ? "Not supported in this browser"
+                      : notifications.permission === "granted"
+                        ? "Desktop notifications enabled"
+                        : "In-app alerts are always on"}
+                </div>
               </div>
-              <span className="badge progress">Coming Soon</span>
+              <button
+                className={`d1-inlinebtn${notifications.permission === "granted" ? " active" : ""}`}
+                onClick={notifications.enableDesktop}
+                disabled={notifications.permission === "unsupported" || notifications.permission === "denied" || notifications.permission === "granted"}
+              >
+                {notifications.permission === "granted" ? "Enabled" : notifications.permission === "denied" ? "Blocked" : "Enable desktop"}
+              </button>
             </div>
           </div>
         </div>
