@@ -176,3 +176,114 @@ async def list_imports(user: dict = Depends(require_quality_or_above)):
         return {"imports": [dict(r) for r in rows]}
     finally:
         conn.close()
+
+
+# Domain table mapping for each file_type
+_DOMAIN_TABLES = {
+    "raw_materials": ["raw_materials"],
+    "production": ["production_batches"],
+    "qc": ["qc_inspections"],
+    "dispatch": ["dispatch_orders", "dispatch_batches"],
+    "supplier": ["suppliers"],
+    "complaints": ["complaints"],
+}
+
+
+@router.delete("/{import_id}")
+async def delete_import(import_id: str, user: dict = Depends(require_quality_or_above)):
+    """Delete an imported CSV file and rollback all domain data it inserted."""
+    conn = connect()
+    try:
+        source = conn.execute("SELECT * FROM source_files WHERE import_id = ?", (import_id,)).fetchone()
+        if not source:
+            raise HTTPException(status_code=404, detail="Import not found")
+
+        file_type = source["file_type"]
+        
+        # Retrieve the raw rows to identify what was inserted
+        raw_rows = conn.execute(
+            "SELECT raw_json FROM source_rows WHERE import_id = ? AND validation_status = 'valid'",
+            (import_id,),
+        ).fetchall()
+
+        deleted_domain_rows = 0
+
+        if file_type == "production":
+            # For production, we need to delete by matching source row data
+            for raw_row in raw_rows:
+                row_data = json.loads(raw_row["raw_json"])
+                lot = (row_data.get("input_lot_ref") or "").strip()
+                date = parse_date(row_data.get("date"))
+                machine = (row_data.get("machine_id") or "").strip()
+                operator = (row_data.get("operator_id") or "").strip()
+                if lot and date:
+                    cur = conn.execute(
+                        "DELETE FROM production_batches WHERE input_lot_ref = ? AND production_date = ? AND machine_id = ? AND operator_id = ?",
+                        (lot, date, machine, operator),
+                    )
+                    deleted_domain_rows += cur.rowcount
+
+        elif file_type == "qc":
+            for raw_row in raw_rows:
+                row_data = json.loads(raw_row["raw_json"])
+                batch_id = (row_data.get("batch_id") or "").strip()
+                insp_date = parse_date(row_data.get("inspection_date"))
+                if batch_id:
+                    cur = conn.execute(
+                        "DELETE FROM qc_inspections WHERE batch_id = ? AND inspection_date = ?",
+                        (batch_id, insp_date),
+                    )
+                    deleted_domain_rows += cur.rowcount
+
+        elif file_type == "dispatch":
+            for raw_row in raw_rows:
+                row_data = json.loads(raw_row["raw_json"])
+                order_id = (row_data.get("order_id") or "").strip()
+                if order_id:
+                    conn.execute("DELETE FROM dispatch_batches WHERE order_id = ?", (order_id,))
+                    cur = conn.execute("DELETE FROM dispatch_orders WHERE order_id = ?", (order_id,))
+                    deleted_domain_rows += cur.rowcount
+
+        elif file_type == "raw_materials":
+            for raw_row in raw_rows:
+                row_data = json.loads(raw_row["raw_json"])
+                lot = (row_data.get("lot_number") or "").strip()
+                supplier = (row_data.get("supplier_id") or "").strip()
+                if lot and supplier:
+                    cur = conn.execute(
+                        "DELETE FROM raw_materials WHERE lot_number = ? AND supplier_id = ?",
+                        (lot, supplier),
+                    )
+                    deleted_domain_rows += cur.rowcount
+
+        elif file_type == "supplier":
+            for raw_row in raw_rows:
+                row_data = json.loads(raw_row["raw_json"])
+                sid = (row_data.get("supplier_id") or "").strip()
+                if sid:
+                    cur = conn.execute("DELETE FROM suppliers WHERE supplier_id = ?", (sid,))
+                    deleted_domain_rows += cur.rowcount
+
+        elif file_type == "complaints":
+            for raw_row in raw_rows:
+                row_data = json.loads(raw_row["raw_json"])
+                cid = (row_data.get("complaint_id") or "").strip()
+                if cid:
+                    cur = conn.execute("DELETE FROM complaints WHERE complaint_id = ?", (cid,))
+                    deleted_domain_rows += cur.rowcount
+
+        # Clean up import tracking tables
+        conn.execute("DELETE FROM import_errors WHERE import_id = ?", (import_id,))
+        conn.execute("DELETE FROM source_rows WHERE import_id = ?", (import_id,))
+        conn.execute("DELETE FROM source_files WHERE import_id = ?", (import_id,))
+        conn.commit()
+
+        return {
+            "status": "deleted",
+            "import_id": import_id,
+            "file_type": file_type,
+            "filename": source["filename"],
+            "domain_rows_removed": deleted_domain_rows,
+        }
+    finally:
+        conn.close()

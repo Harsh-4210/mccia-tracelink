@@ -175,6 +175,15 @@ export async function fetchImports(): Promise<any> {
   return res.json();
 }
 
+export async function deleteImport(importId: string): Promise<any> {
+  const res = await authFetch(`/api/v1/imports/${importId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Delete failed");
+  }
+  return res.json();
+}
+
 // ── Compliance ───────────────────────────────────────────────
 export async function fetchCorrectiveActions(status?: string): Promise<any> {
   const params = status ? `?status=${status}` : "";

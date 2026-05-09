@@ -267,6 +267,8 @@ All endpoints require a Firebase ID token in the `Authorization: Bearer <token>`
 | GET | `/api/v1/operator/batches/recent` | operator+ | Recent entries |
 | GET | `/api/v1/dashboard/metrics` | any | Dashboard KPIs including Shift Intelligence |
 | POST | `/api/v1/imports` | quality+ | Upload CSV file (triggers dynamic imputation) |
+| GET | `/api/v1/imports` | quality+ | List all imported files and status |
+| DELETE | `/api/v1/imports/{id}` | quality+ | Delete a CSV and safely rollback all domain data it inserted |
 | GET | `/api/v1/review/unresolved-links` | any | List unresolved links |
 | POST | `/api/v1/review/.../approve` | supervisor+ | Approve link |
 | POST | `/api/v1/compliance/corrective-actions` | quality+ | Create CAPA |

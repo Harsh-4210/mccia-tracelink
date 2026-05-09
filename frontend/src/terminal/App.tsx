@@ -1,25 +1,26 @@
 import { FormEvent, type ReactNode, useEffect, useState } from "react";
 import { Link, Navigate, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  approveLink,
-  createCorrectiveAction,
-  downloadAlertExport,
+  fetchRecentBatches,
   downloadTraceExport,
   fetchCorrectiveActions,
   fetchAlert,
-  fetchDashboard,
+  fetchDashboardMetrics,
   fetchImports,
+  uploadImport,
+  deleteImport,
   fetchTrace,
   fetchUnresolvedLinks,
   postBatch,
   rejectLink,
+  approveTraceLink,
   type AlertResult,
   type DashboardMetrics,
   type TraceResult,
-  uploadImport,
   fetchUsers,
   updateUserRole,
   fetchAiQuery,
+  fetchAuditEvents,
   fetchPipelineAudit,
 } from "../api";
 import { LoginPage } from "../auth/LoginPage";
@@ -675,7 +676,7 @@ function DashboardScreen() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchDashboard().then(setMetrics).catch((e) => setError(e?.message || "Dashboard failed"));
+    fetchDashboardMetrics().then(setMetrics).catch((e) => setError(e?.message || "Dashboard failed"));
   }, []);
 
   const isEmpty = metrics && metrics.batch_count === 0 && metrics.supplier_scorecard.length === 0;
@@ -794,6 +795,17 @@ function ImportScreen() {
     }
   }
 
+  async function handleDelete(importId: string) {
+    if (!window.confirm("Are you sure? This will delete the CSV and all associated data inserted from it.")) return;
+    try {
+      const result = await deleteImport(importId);
+      setMessage(`Deleted import ${result.import_id}. Removed ${result.domain_rows_removed} domain rows.`);
+      await refresh();
+    } catch (e: any) {
+      setMessage(e?.message || "Delete failed");
+    }
+  }
+
   return (
     <DashboardShell page="IMPORT">
       <div className="d1-pageHead">
@@ -822,11 +834,14 @@ function ImportScreen() {
         {message && <div className="d1-syncbar" style={{ marginTop: 18 }}>{message}</div>}
         <div className="d1-result">
           <table className="d1-table">
-            <thead><tr><th>{t("import.id")}</th><th>{t("import.file")}</th><th>{t("import.type_col")}</th><th>{t("import.status")}</th><th>{t("import.rows")}</th><th>{t("import.uploaded")}</th></tr></thead>
+            <thead><tr><th>{t("import.id")}</th><th>{t("import.file")}</th><th>{t("import.type_col")}</th><th>{t("import.status")}</th><th>{t("import.rows")}</th><th>{t("import.uploaded")}</th><th>Actions</th></tr></thead>
             <tbody>
               {imports.map((row) => (
                 <tr key={row.import_id}>
                   <td>{row.import_id}</td><td>{row.filename}</td><td>{row.file_type}</td><td>{row.status}</td><td>{row.row_count}</td><td>{row.uploaded_at}</td>
+                  <td>
+                    <button className="d1-btn red" onClick={() => handleDelete(row.import_id)} style={{ padding: '4px 8px', fontSize: '0.8em' }}>Delete</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
