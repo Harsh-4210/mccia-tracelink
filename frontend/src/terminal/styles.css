@@ -247,6 +247,11 @@
   transition: background-color .15s, color .15s, border-color .15s;
 }
 .d1-icon-btn:hover { background: var(--bg-hover); color: var(--ink); border-color: var(--line-strong); }
+.d1-icon-btn.active {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: rgba(255,107,0,.35);
+}
 .d1-content {
   padding: 32px; flex: 1;
   display: flex; flex-direction: column; gap: 24px;
@@ -442,6 +447,8 @@
   transition: background-color .15s, color .15s, transform .15s;
 }
 .d1-inlinebtn:hover { background: var(--primary); color: #fff; }
+.d1-inlinebtn.active { background: var(--primary); color: #fff; }
+.d1-inlinebtn:disabled { opacity: .6; cursor: not-allowed; }
 
 /* ═══════════════════ GUIDE OVERLAY ═══════════════════ */
 .d1-guide-overlay {

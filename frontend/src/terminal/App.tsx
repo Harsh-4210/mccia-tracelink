@@ -127,6 +127,66 @@ function useTheme() {
   return { theme, toggleTheme: () => setTheme(t => t === "light" ? "dark" : "light") };
 }
 
+const NOTIFICATION_PREF_KEY = "tl_desktop_notifications";
+
+function notificationPermission(): NotificationPermission | "unsupported" {
+  if (!("Notification" in window)) return "unsupported";
+  return Notification.permission;
+}
+
+function sendDesktopNotification(title: string, body: string) {
+  if (notificationPermission() !== "granted") return;
+  new Notification(title, {
+    body,
+    icon: "/favicon.svg",
+    tag: "tracelink-notification",
+  });
+}
+
+function useDesktopNotifications() {
+  const [enabled, setEnabled] = useState(() => localStorage.getItem(NOTIFICATION_PREF_KEY) === "enabled");
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(() => notificationPermission());
+
+  async function enable() {
+    if (!("Notification" in window)) {
+      setPermission("unsupported");
+      localStorage.setItem(NOTIFICATION_PREF_KEY, "disabled");
+      setEnabled(false);
+      return false;
+    }
+
+    const nextPermission = Notification.permission === "default"
+      ? await Notification.requestPermission()
+      : Notification.permission;
+
+    setPermission(nextPermission);
+    const nextEnabled = nextPermission === "granted";
+    localStorage.setItem(NOTIFICATION_PREF_KEY, nextEnabled ? "enabled" : "disabled");
+    setEnabled(nextEnabled);
+
+    if (nextEnabled) {
+      sendDesktopNotification("TraceLink notifications enabled", "You will receive desktop alerts while TraceLink is open.");
+    }
+    return nextEnabled;
+  }
+
+  function disable() {
+    localStorage.setItem(NOTIFICATION_PREF_KEY, "disabled");
+    setEnabled(false);
+    setPermission(notificationPermission());
+  }
+
+  async function toggle() {
+    if (enabled) {
+      disable();
+      return false;
+    }
+    return enable();
+  }
+
+  return { enabled, permission, enable, disable, toggle };
+}
+
 function Landing() {
   const { isAuthenticated } = useAuth();
   const { lang, setLang, t } = useI18n();
@@ -241,6 +301,7 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const { t } = useI18n();
+  const notifications = useDesktopNotifications();
   const [showGuide, setShowGuide] = useState(() => !localStorage.getItem("tl_guide_seen"));
 
   function closeGuide() {
@@ -304,7 +365,20 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                 )}
               </button>
-              <button className="d1-icon-btn">
+              <button
+                className={`d1-icon-btn${notifications.enabled ? " active" : ""}`}
+                onClick={notifications.toggle}
+                title={
+                  notifications.permission === "unsupported"
+                    ? "Desktop notifications are not supported"
+                    : notifications.permission === "denied"
+                      ? "Notifications are blocked in browser settings"
+                      : notifications.enabled
+                        ? "Disable desktop notifications"
+                        : "Enable desktop notifications"
+                }
+                aria-pressed={notifications.enabled}
+              >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
               </button>
               <button className="d1-btn ghost" onClick={logout} style={{ border: "1px solid var(--line)", background: "transparent" }}>
@@ -325,6 +399,7 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
 
 function TraceScreen() {
   const { t } = useI18n();
+  const notifications = useDesktopNotifications();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orderId, setOrderId] = useState(searchParams.get("order_id") || "");
   const [result, setResult] = useState<TraceResult | null>(null);
@@ -363,6 +438,14 @@ function TraceScreen() {
   }
 
   const hasFailedBatch = result?.batches.some((batch) => batch.qc?.pass_fail === "FAIL") ?? false;
+
+  useEffect(() => {
+    if (!notifications.enabled || !hasFailedBatch || !result?.dispatch?.order_id) return;
+    sendDesktopNotification(
+      "QC FAIL detected",
+      `Dispatch ${result.dispatch.order_id} includes at least one failed batch.`
+    );
+  }, [hasFailedBatch, notifications.enabled, result?.dispatch?.order_id]);
 
   return (
     <DashboardShell page="TRACE">
@@ -1006,6 +1089,7 @@ function RoleRoute({ children, allowed }: { children: ReactNode; allowed: string
 function AccountScreen() {
   const { t } = useI18n();
   const { user, logout } = useAuth();
+  const notifications = useDesktopNotifications();
   const [users, setUsers] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -1117,9 +1201,21 @@ function AccountScreen() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "var(--bg)", borderRadius: "var(--radius)", border: "1px solid var(--line)" }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>Notifications</div>
-                <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>Email alerts for QC failures</div>
+                <div style={{ fontSize: 12, color: "var(--ink-dim)" }}>
+                  {notifications.permission === "denied"
+                    ? "Blocked in browser settings"
+                    : notifications.permission === "unsupported"
+                      ? "Not supported in this browser"
+                      : "Desktop alerts while TraceLink is open"}
+                </div>
               </div>
-              <span className="badge progress">Coming Soon</span>
+              <button
+                className={`d1-inlinebtn${notifications.enabled ? " active" : ""}`}
+                onClick={notifications.toggle}
+                disabled={notifications.permission === "unsupported"}
+              >
+                {notifications.enabled ? "Enabled" : notifications.permission === "denied" ? "Blocked" : "Enable"}
+              </button>
             </div>
           </div>
         </div>
