@@ -1,4 +1,4 @@
-import { FormEvent, type ReactNode, useEffect, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, Navigate, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import {
   approveLink,
@@ -127,7 +127,18 @@ function useTheme() {
   return { theme, toggleTheme: () => setTheme(t => t === "light" ? "dark" : "light") };
 }
 
-const NOTIFICATION_PREF_KEY = "tl_desktop_notifications";
+const NOTIFICATION_HISTORY_KEY = "tl_notification_history";
+const NOTIFICATION_PROMPTED_KEY = "tl_notification_permission_prompted";
+const NOTIFICATION_EVENT = "tl:notifications-updated";
+
+type AppNotification = {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  read: boolean;
+  severity?: "info" | "warning" | "danger";
+};
 
 function notificationPermission(): NotificationPermission | "unsupported" {
   if (!("Notification" in window)) return "unsupported";
@@ -143,48 +154,110 @@ function sendDesktopNotification(title: string, body: string) {
   });
 }
 
-function useDesktopNotifications() {
-  const [enabled, setEnabled] = useState(() => localStorage.getItem(NOTIFICATION_PREF_KEY) === "enabled");
+function readNotifications(): AppNotification[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(NOTIFICATION_HISTORY_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeNotifications(items: AppNotification[]) {
+  localStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(items.slice(0, 50)));
+  window.dispatchEvent(new CustomEvent(NOTIFICATION_EVENT));
+}
+
+function playNotificationDing() {
+  const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContextClass) return;
+  const context = new AudioContextClass();
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(880, context.currentTime);
+  oscillator.frequency.exponentialRampToValueAtTime(1320, context.currentTime + 0.08);
+  gain.gain.setValueAtTime(0.0001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.22);
+
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + 0.24);
+  oscillator.onended = () => context.close();
+}
+
+async function publishAppNotification(input: Omit<AppNotification, "id" | "createdAt" | "read">) {
+  const notification: AppNotification = {
+    ...input,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    createdAt: new Date().toISOString(),
+    read: false,
+  };
+  writeNotifications([notification, ...readNotifications()]);
+  playNotificationDing();
+
+  if (!("Notification" in window)) return;
+
+  let permission = Notification.permission;
+  if (permission === "default" && !localStorage.getItem(NOTIFICATION_PROMPTED_KEY)) {
+    localStorage.setItem(NOTIFICATION_PROMPTED_KEY, "1");
+    permission = await Notification.requestPermission();
+  }
+  if (permission === "granted") {
+    sendDesktopNotification(notification.title, notification.body);
+  }
+}
+
+function useNotificationCenter() {
+  const [items, setItems] = useState<AppNotification[]>(() => readNotifications());
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(() => notificationPermission());
 
-  async function enable() {
+  useEffect(() => {
+    const refresh = () => {
+      setItems(readNotifications());
+      setPermission(notificationPermission());
+    };
+    window.addEventListener(NOTIFICATION_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(NOTIFICATION_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+
+  async function enableDesktop() {
     if (!("Notification" in window)) {
       setPermission("unsupported");
-      localStorage.setItem(NOTIFICATION_PREF_KEY, "disabled");
-      setEnabled(false);
       return false;
     }
-
-    const nextPermission = Notification.permission === "default"
-      ? await Notification.requestPermission()
-      : Notification.permission;
-
+    const nextPermission = await Notification.requestPermission();
+    localStorage.setItem(NOTIFICATION_PROMPTED_KEY, "1");
     setPermission(nextPermission);
-    const nextEnabled = nextPermission === "granted";
-    localStorage.setItem(NOTIFICATION_PREF_KEY, nextEnabled ? "enabled" : "disabled");
-    setEnabled(nextEnabled);
-
-    if (nextEnabled) {
-      sendDesktopNotification("TraceLink notifications enabled", "You will receive desktop alerts while TraceLink is open.");
+    if (nextPermission === "granted") {
+      sendDesktopNotification("TraceLink desktop notifications enabled", "Important TraceLink alerts can now appear on your desktop.");
     }
-    return nextEnabled;
+    return nextPermission === "granted";
   }
 
-  function disable() {
-    localStorage.setItem(NOTIFICATION_PREF_KEY, "disabled");
-    setEnabled(false);
-    setPermission(notificationPermission());
+  function markAllRead() {
+    writeNotifications(readNotifications().map((item) => ({ ...item, read: true })));
   }
 
-  async function toggle() {
-    if (enabled) {
-      disable();
-      return false;
-    }
-    return enable();
+  function clearHistory() {
+    writeNotifications([]);
   }
 
-  return { enabled, permission, enable, disable, toggle };
+  return {
+    items,
+    unreadCount: items.filter((item) => !item.read).length,
+    permission,
+    enableDesktop,
+    markAllRead,
+    clearHistory,
+  };
 }
 
 function Landing() {
@@ -301,7 +374,8 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const { t } = useI18n();
-  const notifications = useDesktopNotifications();
+  const notifications = useNotificationCenter();
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [showGuide, setShowGuide] = useState(() => !localStorage.getItem("tl_guide_seen"));
 
   function closeGuide() {
@@ -365,22 +439,49 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                 )}
               </button>
-              <button
-                className={`d1-icon-btn${notifications.enabled ? " active" : ""}`}
-                onClick={notifications.toggle}
-                title={
-                  notifications.permission === "unsupported"
-                    ? "Desktop notifications are not supported"
-                    : notifications.permission === "denied"
-                      ? "Notifications are blocked in browser settings"
-                      : notifications.enabled
-                        ? "Disable desktop notifications"
-                        : "Enable desktop notifications"
-                }
-                aria-pressed={notifications.enabled}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-              </button>
+              <div className="d1-notification-wrap">
+                <button
+                  className={`d1-icon-btn${notifications.unreadCount > 0 ? " active" : ""}`}
+                  onClick={() => {
+                    setNotificationPanelOpen((open) => !open);
+                    notifications.markAllRead();
+                  }}
+                  title="Open notifications"
+                  aria-label={`Open notifications${notifications.unreadCount ? `, ${notifications.unreadCount} unread` : ""}`}
+                  aria-expanded={notificationPanelOpen}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                  {notifications.unreadCount > 0 && <span className="d1-notification-dot">{notifications.unreadCount > 9 ? "9+" : notifications.unreadCount}</span>}
+                </button>
+                {notificationPanelOpen && (
+                  <div className="d1-notification-panel">
+                    <div className="d1-notification-head">
+                      <div>
+                        <strong>Notifications</strong>
+                        <span>{notifications.items.length ? `${notifications.items.length} recent` : "No alerts yet"}</span>
+                      </div>
+                      {notifications.items.length > 0 && (
+                        <button className="d1-inlinebtn" onClick={notifications.clearHistory}>Clear</button>
+                      )}
+                    </div>
+                    <div className="d1-notification-list">
+                      {notifications.items.length === 0 ? (
+                        <div className="d1-notification-empty">Important trace and QC alerts will appear here.</div>
+                      ) : (
+                        notifications.items.map((item) => (
+                          <div key={item.id} className={`d1-notification-item ${item.severity || "info"}`}>
+                            <div>
+                              <strong>{item.title}</strong>
+                              <p>{item.body}</p>
+                              <span>{new Date(item.createdAt).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <button className="d1-btn ghost" onClick={logout} style={{ border: "1px solid var(--line)", background: "transparent" }}>
                 {t("nav.logout")}
               </button>
@@ -399,12 +500,12 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
 
 function TraceScreen() {
   const { t } = useI18n();
-  const notifications = useDesktopNotifications();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orderId, setOrderId] = useState(searchParams.get("order_id") || "");
   const [result, setResult] = useState<TraceResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const notifiedOrders = useRef<Set<string>>(new Set());
 
   async function run(updateUrl = true) {
     const clean = orderId.trim();
@@ -440,12 +541,15 @@ function TraceScreen() {
   const hasFailedBatch = result?.batches.some((batch) => batch.qc?.pass_fail === "FAIL") ?? false;
 
   useEffect(() => {
-    if (!notifications.enabled || !hasFailedBatch || !result?.dispatch?.order_id) return;
-    sendDesktopNotification(
-      "QC FAIL detected",
-      `Dispatch ${result.dispatch.order_id} includes at least one failed batch.`
-    );
-  }, [hasFailedBatch, notifications.enabled, result?.dispatch?.order_id]);
+    const order = result?.dispatch?.order_id;
+    if (!hasFailedBatch || !order || notifiedOrders.current.has(order)) return;
+    notifiedOrders.current.add(order);
+    publishAppNotification({
+      title: "QC FAIL detected",
+      body: `Dispatch ${order} includes at least one failed batch.`,
+      severity: "danger",
+    });
+  }, [hasFailedBatch, result?.dispatch?.order_id]);
 
   return (
     <DashboardShell page="TRACE">
@@ -1089,7 +1193,7 @@ function RoleRoute({ children, allowed }: { children: ReactNode; allowed: string
 function AccountScreen() {
   const { t } = useI18n();
   const { user, logout } = useAuth();
-  const notifications = useDesktopNotifications();
+  const notifications = useNotificationCenter();
   const [users, setUsers] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -1206,15 +1310,17 @@ function AccountScreen() {
                     ? "Blocked in browser settings"
                     : notifications.permission === "unsupported"
                       ? "Not supported in this browser"
-                      : "Desktop alerts while TraceLink is open"}
+                      : notifications.permission === "granted"
+                        ? "Desktop notifications enabled"
+                        : "In-app alerts are always on"}
                 </div>
               </div>
               <button
-                className={`d1-inlinebtn${notifications.enabled ? " active" : ""}`}
-                onClick={notifications.toggle}
-                disabled={notifications.permission === "unsupported"}
+                className={`d1-inlinebtn${notifications.permission === "granted" ? " active" : ""}`}
+                onClick={notifications.enableDesktop}
+                disabled={notifications.permission === "unsupported" || notifications.permission === "denied" || notifications.permission === "granted"}
               >
-                {notifications.enabled ? "Enabled" : notifications.permission === "denied" ? "Blocked" : "Enable"}
+                {notifications.permission === "granted" ? "Enabled" : notifications.permission === "denied" ? "Blocked" : "Enable desktop"}
               </button>
             </div>
           </div>
