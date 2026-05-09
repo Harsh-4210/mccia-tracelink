@@ -1,13 +1,30 @@
 from fastapi.testclient import TestClient
 
+from app.config import settings
+from app.db import connect
 from app.linking import normalize_defect_type, split_batches
 from app.main import app
-from app.pipeline import rebuild_database
+from app.pipeline import ensure_users_table, rebuild_database, seed_default_admin
 
 
 def client():
     rebuild_database()
+    conn = connect()
+    try:
+        ensure_users_table(conn)
+        seed_default_admin(conn)
+    finally:
+        conn.close()
     return TestClient(app)
+
+
+def auth_headers(c: TestClient) -> dict[str, str]:
+    res = c.post("/api/v1/auth/login", json={
+        "email": settings.DEFAULT_ADMIN_EMAIL,
+        "password": settings.DEFAULT_ADMIN_PASSWORD,
+    })
+    assert res.status_code == 200
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 
 def test_defect_normalization_variants():
@@ -18,7 +35,8 @@ def test_defect_normalization_variants():
 
 
 def test_trace_d_1847_full_chain():
-    res = client().get("/api/trace/dispatch/D-1847")
+    c = client()
+    res = c.get("/api/v1/trace/dispatch/D-1847", headers=auth_headers(c))
     assert res.status_code == 200
     data = res.json()
     batch = data["batches"][0]
@@ -36,7 +54,8 @@ def test_trace_d_1847_full_chain():
 
 
 def test_lot_2023_114_alert_contains_anchor_orders():
-    res = client().get("/api/alerts/lot/LOT-2023-114")
+    c = client()
+    res = c.get("/api/v1/alerts/lots/LOT-2023-114", headers=auth_headers(c))
     assert res.status_code == 200
     data = res.json()
     orders = {row["order_id"] for row in data["affected_dispatch_orders"]}
@@ -46,14 +65,17 @@ def test_lot_2023_114_alert_contains_anchor_orders():
 
 
 def test_operator_entry_endpoint():
-    res = client().post("/api/operator/batches", json={
+    c = client()
+    res = c.post("/api/v1/operator/batches", headers=auth_headers(c), json={
         "date": "2024-03-18",
         "shift": "A",
         "machine_id": "MC-04",
         "operator_id": "OP-101",
         "raw_lot": "LOT-2023-114",
         "units_produced": 120,
-        "qc_notes": "visual check ok"
+        "qc_notes": "visual check ok",
+        "client_entry_id": "test-entry-001",
+        "device_id": "test-device",
     })
     assert res.status_code == 200
     assert res.json()["status"] == "saved"

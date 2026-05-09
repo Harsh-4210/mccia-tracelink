@@ -1,21 +1,42 @@
+"""TraceLink production API.
+
+STARTUP-01 FIX: Uses FastAPI lifespan instead of deprecated @app.on_event("startup").
+AUTH-01 FIX: All endpoints are protected with JWT auth and role-based access control.
+"""
 from __future__ import annotations
 
-import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .config import settings
 from .db import DB_PATH, ROOT_DIR, connect, row_to_dict
+from .auth import get_current_user, require_admin, require_operator_or_above
 from .linking import best_raw_candidate
-from .pipeline import rebuild_database
+from .middleware import AuditMiddleware
+from .pipeline import rebuild_database, ensure_users_table, seed_default_admin
 from .schemas import BatchEntry
 
-_cors_raw = os.getenv("CORS_ORIGINS", "*").strip()
+# ── API route imports ────────────────────────────────────────────
+from .api.auth_routes import router as auth_router
+from .api.trace_routes import router as trace_router
+from .api.alert_routes import router as alert_router
+from .api.operator_routes import router as operator_router
+from .api.import_routes import router as import_router
+from .api.dashboard_routes import router as dashboard_router
+from .api.compliance_routes import router as compliance_router
+from .api.review_routes import router as review_router
+from .api.admin_routes import router as admin_router
+
+
+# ── CORS config ──────────────────────────────────────────────────
+_cors_raw = settings.CORS_ORIGINS.strip()
 if _cors_raw == "*" or not _cors_raw:
     _allow_origins = ["*"]
     _allow_credentials = False
@@ -23,9 +44,39 @@ else:
     _allow_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
     _allow_credentials = True
 
-STATIC_DIR = Path(os.environ.get("FRONTEND_DIST", str(ROOT_DIR / "frontend" / "dist"))).resolve()
+STATIC_DIR = Path(
+    __import__("os").environ.get("FRONTEND_DIST", str(ROOT_DIR / "frontend" / "dist"))
+).resolve()
 
-app = FastAPI(title="TraceLink MVP", version="0.1.0")
+
+# ── Lifespan (STARTUP-01 fix) ───────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    if not DB_PATH.exists():
+        rebuild_database()
+
+    # Ensure production tables exist (safe for upgrades)
+    conn = connect()
+    try:
+        ensure_users_table(conn)
+        seed_default_admin(conn)
+    finally:
+        conn.close()
+
+    yield
+    # Shutdown (nothing needed yet)
+
+
+app = FastAPI(
+    title="TraceLink",
+    version="1.0.0",
+    description="Manufacturing traceability control system",
+    lifespan=lifespan,
+    docs_url="/api/docs" if settings.ENVIRONMENT != "production" else None,
+    redoc_url="/api/redoc" if settings.ENVIRONMENT != "production" else None,
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allow_origins,
@@ -34,25 +85,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.on_event("startup")
-def startup() -> None:
-    if not DB_PATH.exists():
-        rebuild_database()
+# Audit middleware
+app.add_middleware(AuditMiddleware)
 
 
+# ── Mount versioned API routes ───────────────────────────────────
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(trace_router, prefix="/api/v1")
+app.include_router(alert_router, prefix="/api/v1")
+app.include_router(operator_router, prefix="/api/v1")
+app.include_router(import_router, prefix="/api/v1")
+app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(compliance_router, prefix="/api/v1")
+app.include_router(review_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
+
+
+# ── Public health endpoint ───────────────────────────────────────
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     return {"ok": True, "database_exists": DB_PATH.exists(), "database": str(DB_PATH)}
 
 
+# ── Protected legacy endpoints (backward compat with frontend) ──
 @app.post("/api/rebuild")
-def rebuild() -> dict[str, Any]:
+def rebuild(admin: dict = Depends(require_admin)) -> dict[str, Any]:
     return rebuild_database()
 
 
 @app.get("/api/trace/dispatch/{order_id}")
-def trace_dispatch(order_id: str) -> dict[str, Any]:
+def trace_dispatch(order_id: str, user: dict = Depends(get_current_user)) -> dict[str, Any]:
     start = time.perf_counter()
     conn = connect()
     try:
@@ -72,7 +134,7 @@ def trace_dispatch(order_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/alerts/lot/{lot_number}")
-def lot_alert(lot_number: str) -> dict[str, Any]:
+def lot_alert(lot_number: str, user: dict = Depends(get_current_user)) -> dict[str, Any]:
     start = time.perf_counter()
     conn = connect()
     try:
@@ -90,12 +152,19 @@ def lot_alert(lot_number: str) -> dict[str, Any]:
             """, (batch_id,)).fetchall()
             for row in rows:
                 affected.append(dict(row))
-        failed_anchor_batches = [p for p in productions if p["batch_id"] in {"BATCH-2023-0500", "BATCH-2023-0501", "BATCH-2023-0502", "BATCH-2023-0503"}]
+
+        # Compute failed batches from QC data (no hardcoded anchor batches)
+        failed_batches = []
+        for batch_id in batch_ids:
+            qc = conn.execute("SELECT pass_fail FROM qc_inspections WHERE batch_id = ?", (batch_id,)).fetchone()
+            if qc and qc["pass_fail"] == "FAIL":
+                failed_batches.append(batch_id)
+
         return {
             "query_ms": round((time.perf_counter() - start) * 1000, 2),
             "lot_number": lot_number,
             "production_batches": productions,
-            "failed_anchor_batches": failed_anchor_batches,
+            "failed_anchor_batches": failed_batches,
             "affected_dispatch_orders": affected,
             "summary": {"batch_count": len(batch_ids), "dispatch_order_count": len(affected)},
         }
@@ -104,14 +173,27 @@ def lot_alert(lot_number: str) -> dict[str, Any]:
 
 
 @app.post("/api/operator/batches")
-def create_operator_entry(entry: BatchEntry) -> dict[str, Any]:
+def create_operator_entry(entry: BatchEntry, user: dict = Depends(require_operator_or_above)) -> dict[str, Any]:
     conn = connect()
     try:
+        # Idempotency check
+        if entry.client_entry_id:
+            existing = conn.execute(
+                "SELECT entry_id FROM operator_entries WHERE client_entry_id = ?",
+                (entry.client_entry_id,),
+            ).fetchone()
+            if existing:
+                return {"status": "already_saved", "entry_id": existing["entry_id"], "duplicate": True}
+
         cur = conn.execute(
             """INSERT INTO operator_entries
-            (production_date, shift, machine_id, operator_id, raw_lot, units_produced, qc_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (entry.date, entry.shift, entry.machine_id, entry.operator_id, entry.raw_lot, entry.units_produced, entry.qc_notes),
+            (production_date, shift, machine_id, operator_id, raw_lot, units_produced,
+             qc_notes, client_entry_id, device_id, created_offline_at, synced_at, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)""",
+            (entry.date, entry.shift, entry.machine_id, entry.operator_id,
+             entry.raw_lot, entry.units_produced, entry.qc_notes,
+             entry.client_entry_id, entry.device_id, entry.created_offline_at,
+             user.get("user_id")),
         )
         conn.commit()
         return {"status": "saved", "entry_id": cur.lastrowid}
@@ -133,6 +215,7 @@ def resolve_raw(conn, production: dict[str, Any] | None, qc: dict[str, Any] | No
     return {**best, "supplier": supplier}
 
 
+# ── SPA frontend serving ─────────────────────────────────────────
 def _mount_frontend() -> None:
     if not STATIC_DIR.is_dir():
         return

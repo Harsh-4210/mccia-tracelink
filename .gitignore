@@ -28,3 +28,7 @@ dist/
 
 # OS/editor
 .DS_Store
+
+# Firebase credentials (NEVER commit)
+serviceAccountKey.json
+**/serviceAccountKey.json
