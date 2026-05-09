@@ -417,6 +417,7 @@ def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: 
             )
 
         # Second pass: Impute missing batch_ids using full dataset context
+        # 5-tier imputation engine — picks closest date match at each tier
         for r in missing_rows:
             input_lot_ref = clean_text(r.get("input_lot_ref"))
             prod_date_str = parse_date(r.get("date"))
@@ -425,50 +426,108 @@ def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: 
             imputation_stats["total_missing"] += 1
             batch_id = None
             inferred = 1
-            confidence = 1.0
+            confidence = 0.0
             reason = None
+            p_date = None
             
-            if input_lot_ref and machine_id and prod_date_str:
+            if prod_date_str:
                 try:
                     p_date = parser.parse(prod_date_str)
-                    candidates = conn.execute("SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND machine_id = ? AND batch_id IS NOT NULL", (input_lot_ref, machine_id)).fetchall()
-                    best_batch = None
-                    for c in candidates:
-                        c_date = parser.parse(c["production_date"])
-                        if abs((p_date - c_date).days) <= 3:
-                            best_batch = c["batch_id"]
-                            break
-                    if best_batch:
-                        batch_id = best_batch
-                        confidence = 0.75
-                        reason = "Rule 1: Same lot, same machine, ±3 days"
-                        imputation_stats["rule1_75"] += 1
-                except Exception:
-                    pass
-            
-            if not batch_id and input_lot_ref and prod_date_str:
-                try:
-                    p_date = parser.parse(prod_date_str)
-                    candidates = conn.execute("SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND batch_id IS NOT NULL", (input_lot_ref,)).fetchall()
-                    best_batch = None
-                    for c in candidates:
-                        if c["production_date"]:
-                            c_date = parser.parse(c["production_date"])
-                            if abs((p_date - c_date).days) <= 7:
-                                best_batch = c["batch_id"]
-                                break
-                    if best_batch:
-                        batch_id = best_batch
-                        confidence = 0.45
-                        reason = "Rule 2: Same lot, ±7 days"
-                        imputation_stats["rule2_45"] += 1
                 except Exception:
                     pass
 
+            def find_closest(candidates, max_days):
+                """Return the batch_id of the candidate with the closest production_date within max_days."""
+                best_id = None
+                best_gap = max_days + 1
+                for c in candidates:
+                    if c["production_date"] and p_date:
+                        try:
+                            c_date = parser.parse(c["production_date"])
+                            gap = abs((p_date - c_date).days)
+                            if gap <= max_days and gap < best_gap:
+                                best_gap = gap
+                                best_id = c["batch_id"]
+                        except Exception:
+                            continue
+                return best_id
+
+            # ── Rule 1 (90%): Same lot + same machine, ±7 days ──
+            if not batch_id and input_lot_ref and machine_id and p_date:
+                candidates = conn.execute(
+                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND machine_id = ? AND inferred_batch_id = 0",
+                    (input_lot_ref, machine_id)
+                ).fetchall()
+                match = find_closest(candidates, 7)
+                if match:
+                    batch_id = match
+                    confidence = 0.90
+                    reason = "Rule 1: Same lot + same machine, ±7 days (closest date)"
+                    imputation_stats["rule1_75"] += 1
+
+            # ── Rule 2 (75%): Same lot, ±14 days ──
+            if not batch_id and input_lot_ref and p_date:
+                candidates = conn.execute(
+                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND inferred_batch_id = 0",
+                    (input_lot_ref,)
+                ).fetchall()
+                match = find_closest(candidates, 14)
+                if match:
+                    batch_id = match
+                    confidence = 0.75
+                    reason = "Rule 2: Same lot, ±14 days (closest date)"
+                    imputation_stats["rule2_45"] += 1
+
+            # ── Rule 3 (55%): Same lot, ±30 days ──
+            if not batch_id and input_lot_ref and p_date:
+                candidates = conn.execute(
+                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND inferred_batch_id = 0",
+                    (input_lot_ref,)
+                ).fetchall()
+                match = find_closest(candidates, 30)
+                if match:
+                    batch_id = match
+                    confidence = 0.55
+                    reason = "Rule 3: Same lot, ±30 days (closest date)"
+                    imputation_stats.setdefault("rule3_55", 0)
+                    imputation_stats["rule3_55"] += 1
+
+            # ── Rule 4 (30%): Same lot, nearest neighbor (any distance) ──
+            if not batch_id and input_lot_ref:
+                candidates = conn.execute(
+                    "SELECT batch_id, production_date FROM production_batches WHERE input_lot_ref = ? AND inferred_batch_id = 0",
+                    (input_lot_ref,)
+                ).fetchall()
+                if candidates:
+                    if p_date:
+                        # pick the closest by date
+                        best_id = None
+                        best_gap = float("inf")
+                        for c in candidates:
+                            if c["production_date"]:
+                                try:
+                                    gap = abs((p_date - parser.parse(c["production_date"])).days)
+                                    if gap < best_gap:
+                                        best_gap = gap
+                                        best_id = c["batch_id"]
+                                except Exception:
+                                    continue
+                        if best_id:
+                            batch_id = best_id
+                    else:
+                        # no date, just pick the first known batch for this lot
+                        batch_id = candidates[0]["batch_id"]
+                    if batch_id:
+                        confidence = 0.30
+                        reason = "Rule 4: Same lot, nearest neighbor (wide temporal gap)"
+                        imputation_stats.setdefault("rule4_30", 0)
+                        imputation_stats["rule4_30"] += 1
+
+            # ── Rule 5 (0%): No match — synthetic ID ──
             if not batch_id:
                 batch_id = "SYN-" + str(uuid.uuid4())[:8].upper()
                 confidence = 0.0
-                reason = "Rule 3: No match found, synthetic ID generated"
+                reason = "Rule 5: No match found, synthetic ID generated"
                 imputation_stats["rule3_0"] += 1
 
             conn.execute(

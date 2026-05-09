@@ -1277,12 +1277,14 @@ function DataAuditScreen() {
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           
           <div className="d1-frame">
-            <h2>Imputation Breakdowns</h2>
-            <div className="d1-grid3">
-              <div><span className="key">Total Inferred Batches</span><span className="val" style={{ fontSize: 24 }}>{auditData.imputations.total_inferred || 0}</span></div>
-              <div><span className="key">Rule 1 (75% Conf)</span><span className="val" style={{ fontSize: 24, color: "var(--success)" }}>{auditData.imputations.rule1_75 || 0}</span></div>
-              <div><span className="key">Rule 2 (45% Conf)</span><span className="val" style={{ fontSize: 24, color: "var(--amber)" }}>{auditData.imputations.rule2_45 || 0}</span></div>
-              <div><span className="key">Rule 3 (0% Conf)</span><span className="val" style={{ fontSize: 24, color: "var(--red)" }}>{auditData.imputations.rule3_0 || 0}</span></div>
+            <h2>Imputation Engine Breakdown (5-Tier)</h2>
+            <div className="d1-grid3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+              <div><span className="key">Total Inferred</span><span className="val" style={{ fontSize: 24 }}>{auditData.imputations.total_inferred || 0}</span></div>
+              <div><span className="key">Rule 1 (90% — Lot+Machine ±7d)</span><span className="val" style={{ fontSize: 24, color: "#10b981" }}>{auditData.imputations.rule1_90 || 0}</span></div>
+              <div><span className="key">Rule 2 (75% — Same Lot ±14d)</span><span className="val" style={{ fontSize: 24, color: "#3b82f6" }}>{auditData.imputations.rule2_75 || 0}</span></div>
+              <div><span className="key">Rule 3 (55% — Same Lot ±30d)</span><span className="val" style={{ fontSize: 24, color: "var(--amber)" }}>{auditData.imputations.rule3_55 || 0}</span></div>
+              <div><span className="key">Rule 4 (30% — Nearest Neighbor)</span><span className="val" style={{ fontSize: 24, color: "#f97316" }}>{auditData.imputations.rule4_30 || 0}</span></div>
+              <div><span className="key">Rule 5 (0% — Synthetic)</span><span className="val" style={{ fontSize: 24, color: "var(--red)" }}>{auditData.imputations.rule5_0 || 0}</span></div>
             </div>
           </div>
 

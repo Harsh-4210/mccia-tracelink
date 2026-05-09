@@ -98,12 +98,14 @@ async def pipeline_audit(admin: dict = Depends(require_admin)):
             except:
                 counts[t] = 0
 
-        # Imputation breakdowns
+        # Imputation breakdowns (5-tier engine)
         imputations = conn.execute("""
             SELECT 
-                SUM(CASE WHEN inference_confidence = 0.75 THEN 1 ELSE 0 END) as rule1_75,
-                SUM(CASE WHEN inference_confidence = 0.45 THEN 1 ELSE 0 END) as rule2_45,
-                SUM(CASE WHEN inference_confidence = 0.0 THEN 1 ELSE 0 END) as rule3_0,
+                SUM(CASE WHEN inference_confidence = 0.9 THEN 1 ELSE 0 END) as rule1_90,
+                SUM(CASE WHEN inference_confidence = 0.75 THEN 1 ELSE 0 END) as rule2_75,
+                SUM(CASE WHEN inference_confidence = 0.55 THEN 1 ELSE 0 END) as rule3_55,
+                SUM(CASE WHEN inference_confidence = 0.3 THEN 1 ELSE 0 END) as rule4_30,
+                SUM(CASE WHEN inference_confidence = 0.0 AND inferred_batch_id = 1 THEN 1 ELSE 0 END) as rule5_0,
                 SUM(CASE WHEN inferred_batch_id = 1 THEN 1 ELSE 0 END) as total_inferred
             FROM production_batches
         """).fetchone()
