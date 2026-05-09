@@ -1,145 +1,133 @@
-# 🔗 TraceLink — Manufacturing Traceability Control System
+# TraceLink
 
-> **Track any dispatch order from factory floor to customer in 30 seconds.**  
-> End-to-end traceability for raw materials → production → QC → dispatch with full audit trails.
+TraceLink is a manufacturing traceability system for connecting raw material lots, production batches, quality inspections, dispatch orders, and customer complaints. It is designed for fast recall investigation, supplier-risk analysis, and audit-ready operational visibility.
 
----
+The application includes a FastAPI backend, a React/Vite frontend, SQLite-backed demo data, Firebase Authentication, role-based access control, CSV ingestion, trace exports, operator batch entry, compliance actions, and an audit trail.
 
-## 📋 Table of Contents
+## What TraceLink Does
 
-- [What is TraceLink?](#what-is-tracelink)
-- [Key Features](#key-features)
-- [Architecture](#architecture)
-- [Quick Start](#quick-start)
-- [Project Structure](#project-structure)
-- [Authentication](#authentication)
-- [User Roles](#user-roles)
-- [API Reference](#api-reference)
-- [Data Pipeline](#data-pipeline)
-- [Multilingual Support](#multilingual-support)
-- [Deployment](#deployment)
-- [Environment Variables](#environment-variables)
+When a customer reports a defect or a raw material lot is flagged, TraceLink helps answer:
 
----
+- Which raw material lot was used in a dispatch order?
+- Which production batch, machine, operator, and shift produced it?
+- What did QC record for that batch?
+- Which other customer orders may be affected by the same lot?
+- What follow-up actions, reviews, and audit events exist?
 
-## What is TraceLink?
+Core trace flow:
 
-TraceLink is a **production-grade manufacturing traceability system** built for quality control teams, plant managers, and compliance officers. It connects every step of the manufacturing chain:
-
-```
-Raw Material Receipt → Production Batches → QC Inspection → Dispatch → Customer
-        ↓                    ↓                  ↓              ↓
-   Supplier Data        Machine/Operator     Pass/Fail      Order Tracking
-   Lot Numbers          Shift Records        Defect Rates   Batch References
+```text
+Raw Material Lot -> Production Batch -> QC Inspection -> Dispatch Order -> Customer
 ```
 
-### The Problem It Solves
+## Key Capabilities
 
-When a customer reports a defect, manufacturers need to answer:
-- *"Which raw material lot was used in this batch?"*
-- *"What other dispatch orders used the same lot?"*
-- *"Which machine/operator produced this batch?"*
-- *"Did QC flag anything?"*
-
-TraceLink answers all of these **in under 30 seconds** with full audit trails. It now features an **AI Assistant**, **Dynamic Data Imputation**, and a **Contamination Blast Radius** module for advanced predictive impact tracking.
-
----
-
-## Key Features
-
-| Feature | Description | Who Uses It |
-|---------|-------------|-------------|
-| 🔍 **Trace Engine** | Forward/backward trace from any dispatch order | Quality, Managers |
-| 🚨 **Contamination Blast Radius** | Deep analytical impact simulation when a raw lot is flagged (Financial Exposure, Escaped Shipments) | Quality, Compliance |
-| 🤖 **Conversational AI** | Natural language logistics query assistant | Everyone |
-| 📊 **Shift Intelligence** | Dynamic dashboard highlighting the worst-performing shift in real-time | Managers, Leadership |
-| 🧠 **Dynamic Imputation** | 3-tier probabilistic rule engine for auto-resolving missing batch IDs during CSV ingestion | Data Team |
-| 📝 **Shop-Floor Logger** | Offline-first batch entry with auto-shift detection | Operators |
-| 📁 **Import** | Bulk CSV upload with real-time validation and imputation | Quality, Data Team |
-| 🔗 **Review Queue** | Approve/reject inferred trace links | Supervisors |
-| 📋 **Compliance** | Corrective actions (8D/CAPA) tracking | Quality, Compliance |
-| 📋 **Data Audit** | Complete transparency into pipeline imputation logic and temporal integrity | Admins |
-| 🔒 **Audit Log** | Every action logged with user, timestamp, request ID | Admins |
-| 🌐 **Bilingual Interface** | English + Marathi UI with one-click toggle | Everyone |
-| 📖 **Guided Tour** | Interactive onboarding for new users | Everyone |
-
----
+| Area | Capability |
+| --- | --- |
+| Trace search | Backward trace from dispatch orders to production, QC, raw lot, and supplier data |
+| Lot alerts | Forward impact analysis from a raw lot to affected batches and dispatches |
+| CSV ingestion | Upload and validate manufacturing data, with rollback support for imported files |
+| Link review | Review, approve, or reject inferred trace links |
+| Operator entry | Create shop-floor batch entries with idempotent sync support |
+| Dashboard | Operational metrics, QC trends, and shift-level visibility |
+| Compliance | Corrective action tracking for quality follow-up workflows |
+| Auditability | Request-level audit events for trace, import, review, admin, and operator activity |
+| AI assistant | Natural-language query endpoint for logistics and traceability questions |
+| Frontend | React SPA with Firebase login, role-aware workflows, and localized UI support |
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    Frontend (React + Vite)          │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐             │
-│  │ Firebase │ │   i18n   │ │ Offline  │             │
-│  │   Auth   │ │ EN / HI  │ │  Queue   │             │
-│  └────┬─────┘ └──────────┘ └────┬─────┘             │
-│       │                          │                  │
-│       ▼                          ▼                  │
-│  ┌─────────────────────────────────────┐            │
-│  │         api.ts (Firebase ID Token)  │            │
-│  └──────────────────┬──────────────────┘            │
-└─────────────────────┼───────────────────────────────┘
-                      │ HTTPS + Bearer Token
-┌─────────────────────┼───────────────────────────────┐
-│                     ▼                               │
-│            FastAPI Backend (Python)                 │
-│  ┌──────────────────────────────────────┐           │
-│  │  firebase-admin (Token Verification) │           │
-│  └──────────────────────────────────────┘           │
-│  ┌──────┐ ┌───────┐ ┌────────┐ ┌───────┐            │
-│  │ RBAC │ │ Audit │ │ Import │ │ CAPA  │            │
-│  └──────┘ └───────┘ └────────┘ └───────┘            │
-│                     │                               │
-│            SQLite (WAL mode)                        │
-│  ┌──────────────────────────────────────┐           │
-│  │ 12 tables: users, production_batches,│           │
-│  │ qc_inspections, dispatch_orders, ... │           │
-│  └──────────────────────────────────────┘           │
-└─────────────────────────────────────────────────────┘
+```text
+Frontend: React + Vite
+  - Firebase client authentication
+  - API client with bearer-token requests
+  - Offline/operator sync helpers
+
+Backend: FastAPI
+  - Firebase Admin token verification
+  - Role-based route dependencies
+  - Versioned API routes under /api/v1
+  - Audit middleware
+  - Static frontend serving in production builds
+
+Storage
+  - SQLite database for local/demo operation
+  - CSV source files for sample manufacturing data
 ```
 
----
+The production Docker image builds the frontend with Bun, installs the Python API dependencies, copies the sample CSV files, and serves both API and static SPA from one container.
 
-## Quick Start
+## Repository Layout
 
-### Prerequisites
-- **Python 3.10+**
-- **Node.js 18+**
-- **Firebase project** with Email/Password auth enabled
-
-### 1. Clone & Setup Backend
-
-```bash
-cd mccia-tracelink/backend
-pip install -r requirements.txt
+```text
+.
+├── backend/
+│   ├── app/
+│   │   ├── api/                 # Versioned route modules
+│   │   ├── auth.py              # Firebase token verification and RBAC helpers
+│   │   ├── config.py            # Environment configuration
+│   │   ├── db.py                # SQLite connection helpers
+│   │   ├── linking.py           # Trace-link matching and scoring
+│   │   ├── main.py              # FastAPI app, middleware, routes, SPA mount
+│   │   ├── middleware.py        # Audit logging middleware
+│   │   ├── pipeline.py          # Schema creation and CSV rebuild pipeline
+│   │   └── schemas.py           # Request/response models
+│   ├── requirements.txt
+│   └── tests/
+├── docs/
+│   ├── data-cleaning-assumptions.md
+│   └── scaling-to-10-lines.md
+├── frontend/
+│   ├── src/
+│   ├── package.json
+│   └── vite.config.ts
+├── *.csv                        # Demo manufacturing data
+├── Dockerfile
+└── README.md
 ```
 
-### 2. Firebase Setup
+## Prerequisites
 
-1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Create a project (or use existing: `tracelink-793ba`)
-3. Enable **Authentication → Sign-in method → Email/Password**
-4. (Optional) Enable **Google** sign-in
-5. Go to **Project Settings → Service accounts → Generate new private key**
-6. Save as `backend/serviceAccountKey.json`
+- Python 3.11 recommended
+- Node.js 18+ or Bun for frontend development
+- Firebase project with Email/Password auth enabled
+- Firebase service account credentials for backend token verification
 
-> ⚠️ **Never commit `serviceAccountKey.json` to git!** It's in `.gitignore`.
+## Local Setup
 
-### 3. Initialize Database
+### 1. Backend
 
 ```bash
 cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Place your Firebase service account JSON at:
+
+```text
+backend/serviceAccountKey.json
+```
+
+Then rebuild the local SQLite database from the CSV files:
+
+```bash
 python -c "from app.pipeline import rebuild_database; print(rebuild_database())"
 ```
 
-### 4. Start Backend
+Start the API:
 
 ```bash
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### 5. Setup & Start Frontend
+Useful backend URLs:
+
+- Health check: `http://127.0.0.1:8000/api/health`
+- OpenAPI docs: `http://127.0.0.1:8000/api/docs`
+
+### 2. Frontend
 
 ```bash
 cd frontend
@@ -147,220 +135,179 @@ npm install
 npm run dev
 ```
 
-### 6. Open & Login
+The Vite development server listens on:
 
-- Frontend: **http://localhost:5173**
-- API Docs: **http://localhost:8000/api/docs**
-- Register with email/password or sign in with Google
-
-### 7. Promote Yourself to Admin
-
-```bash
-cd backend
-python -c "
-from app.db import connect
-conn = connect()
-conn.execute('UPDATE users SET role=? WHERE email=?', ('admin', 'YOUR_EMAIL'))
-conn.commit()
-print('Done')
-conn.close()
-"
+```text
+http://localhost:5173
 ```
 
----
+## Configuration
 
-## Project Structure
+TraceLink reads configuration from environment variables or a root `.env` file.
 
-```
-mccia-tracelink/
-├── backend/
-│   ├── app/
-│   │   ├── api/                    # Versioned route modules
-│   │   │   ├── admin_routes.py     # Audit logs, users, health
-│   │   │   ├── alert_routes.py     # Lot contamination alerts
-│   │   │   ├── auth_routes.py      # Firebase sync, /me, roles
-│   │   │   ├── compliance_routes.py # CAPA/8D actions
-│   │   │   ├── dashboard_routes.py # KPI metrics
-│   │   │   ├── import_routes.py    # CSV upload + validation
-│   │   │   ├── operator_routes.py  # Batch entry + approval
-│   │   │   ├── review_routes.py    # Unresolved link queue
-│   │   │   └── trace_routes.py     # Dispatch trace + export
-│   │   ├── auth.py                 # Firebase token verification + RBAC
-│   │   ├── config.py               # Pydantic settings
-│   │   ├── db.py                   # SQLite connection (WAL mode)
-│   │   ├── linking.py              # Trace link scoring engine
-│   │   ├── main.py                 # FastAPI app + lifespan
-│   │   ├── middleware.py           # Audit logging middleware
-│   │   ├── pipeline.py             # Schema + CSV data loader
-│   │   └── schemas.py              # Pydantic models
-│   ├── requirements.txt
-│   └── serviceAccountKey.json      # 🔒 (gitignored)
-├── frontend/
-│   ├── src/
-│   │   ├── auth/
-│   │   │   ├── AuthContext.tsx      # Firebase auth state
-│   │   │   └── LoginPage.tsx        # Login + Register + Google
-│   │   ├── terminal/
-│   │   │   ├── App.tsx              # All pages + routing
-│   │   │   └── styles.css           # Terminal HUD theme
-│   │   ├── api.ts                   # API layer with Firebase tokens
-│   │   ├── firebase.ts              # Firebase SDK config
-│   │   ├── i18n.ts                  # Multilingual translations
-│   │   ├── offlineQueue.ts          # IndexedDB offline sync
-│   │   └── main.tsx                 # React entry point
-│   └── package.json
-├── raw_materials_log.csv            # Sample data
-├── production_log.csv
-├── qc_inspection.csv
-├── dispatch_log.csv
-├── supplier_master.csv
-├── defect_complaints.csv
-└── README.md
-```
-
----
-
-## Authentication
-
-TraceLink uses **Firebase Authentication** for secure, production-grade auth:
-
-- **Email/Password** — Standard registration and login
-- **Google Sign-In** — One-click OAuth via Google
-- **Token Refresh** — Automatic every 50 minutes
-- **Session Persistence** — Survives browser refresh
-
-The backend verifies Firebase ID tokens using `firebase-admin` SDK and maps each user to a local role in the `users` table.
-
----
-
-## User Roles
-
-| Role | Trace | Alert | Operator | Dashboard | Import | Review | Compliance | Admin |
-|------|-------|-------|----------|-----------|--------|--------|------------|-------|
-| `operator` | ✅ | ✅ | ✅ | ✅ | ❌ | 👀 View | ❌ | ❌ |
-| `supervisor` | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ Approve | ❌ | ❌ |
-| `quality` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| `manager` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| `admin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-
-New users default to `operator`. Admins can promote via API:
-
-```bash
-# PATCH /api/v1/auth/users/{user_id}/role?role=admin
-```
-
----
-
-## API Reference
-
-All endpoints require a Firebase ID token in the `Authorization: Bearer <token>` header.
-
-| Method | Endpoint | Role Required | Description |
-|--------|----------|---------------|-------------|
-| POST | `/api/v1/auth/firebase-sync` | any | Sync Firebase user → local DB |
-| GET | `/api/v1/auth/me` | any | Current user info |
-| GET | `/api/v1/trace/dispatch/{id}` | any | Full trace for dispatch order |
-| GET | `/api/v1/trace/dispatch/{id}/export` | any | CSV export of trace |
-| GET | `/api/v1/alerts/lots/{lot}` | any | Lot contamination alert with Blast Radius |
-| GET | `/api/v1/alerts/lots/{lot}/export` | any | CSV export of alert |
-| POST | `/api/v1/operator/batches` | operator+ | Create batch entry |
-| GET | `/api/v1/operator/batches/recent` | operator+ | Recent entries |
-| GET | `/api/v1/dashboard/metrics` | any | Dashboard KPIs including Shift Intelligence |
-| POST | `/api/v1/imports` | quality+ | Upload CSV file (triggers dynamic imputation) |
-| GET | `/api/v1/imports` | quality+ | List all imported files and status |
-| DELETE | `/api/v1/imports/{id}` | quality+ | Delete a CSV and safely rollback all domain data it inserted |
-| GET | `/api/v1/review/unresolved-links` | any | List unresolved links |
-| POST | `/api/v1/review/.../approve` | supervisor+ | Approve link |
-| POST | `/api/v1/compliance/corrective-actions` | quality+ | Create CAPA |
-| GET | `/api/v1/ai/query` | any | Conversational AI logistics queries |
-| GET | `/api/v1/admin/audit-events` | admin | View user audit log |
-| GET | `/api/v1/admin/pipeline-audit` | admin | View data pipeline imputation stats & anomalies |
-| GET | `/api/v1/admin/health` | any | System health |
-
----
-
-## Data Pipeline
-
-TraceLink processes 6 CSV files to build its traceability database:
-
-| File | Records | Key Fields |
-|------|---------|------------|
-| `raw_materials_log.csv` | ~2,400 | lot_number, supplier_id, material_type |
-| `production_log.csv` | ~5,400 | batch_id, input_lot_ref, machine_id |
-| `qc_inspection.csv` | ~5,400 | batch_id, pass_fail, defect_rate_pct |
-| `dispatch_log.csv` | ~1,800 | order_id, batch_ref, customer_id |
-| `supplier_master.csv` | 6 | supplier_id, supplier_name, approved_status |
-| `defect_complaints.csv` | 3 | complaint_id, root_cause, financial_impact |
-
-### Trace Link Scoring
-
-When production records reference a raw material lot, TraceLink scores the confidence of the link:
-
-- **Deterministic** (≥80%) — Direct lot match with strong evidence
-- **Inferred** (<80%) — Ambiguous match needing human review
-- **Reviewed** — Supervisor-approved inferred link
-
-Scoring factors (all data-driven, no hardcoding):
-- Defect-material correlation
-- Supplier mention in complaints
-- Quality grade risk
-- Supplier approval status
-
-### Dynamic Imputation Engine
-
-When raw production records are uploaded with missing or null batch IDs, TraceLink's Dynamic Imputation Engine uses a 3-tier probabilistic rule system:
-
-- **Rule 1 (75% Confidence)**: Interpolates based on identical timestamps for the same machine ID and operator.
-- **Rule 2 (45% Confidence)**: Interpolates based on preceding timestamps on the same machine ID.
-- **Rule 3 (0% Confidence Fallback)**: Assigns a synthetic unique batch ID to prevent data loss.
-
-This ensures zero data drop during ingestion while preserving pipeline transparency. You can monitor imputation breakdown directly in the **Data Audit Dashboard**.
-
----
-
-## Multilingual Support
-
-TraceLink supports **English** and **Marathi** with one-click toggle on the Shop-Floor Logger page to seamlessly support localized factory operations. The i18n system covers:
-- Navigation labels
-- Page titles and descriptions
-- Form labels and placeholders
-- Error messages
-- Onboarding guide text
-
----
-
-## Deployment
-
-### Production Build
-
-```bash
-# Frontend
-cd frontend && npm run build
-
-# Backend serves the built frontend automatically
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENVIRONMENT` | `dev` | `dev`, `staging`, or `production` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | `backend/serviceAccountKey.json` | Firebase service account key path |
-| `CORS_ORIGINS` | `*` | Allowed origins (restrict in production) |
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ENVIRONMENT` | `dev` | Use `dev`, `staging`, or `production` |
+| `DATABASE_URL` | `sqlite:///backend/tracelink.sqlite3` | Database URL placeholder for current SQLite setup |
+| `DB_PATH` | `backend/tracelink.sqlite3` | SQLite database path |
 | `FIREBASE_PROJECT_ID` | `tracelink-793ba` | Firebase project ID |
+| `GOOGLE_APPLICATION_CREDENTIALS` | `backend/serviceAccountKey.json` | Firebase service account key path |
+| `CORS_ORIGINS` | `*` | Allowed browser origins; must be restricted in production |
+| `DEFAULT_ADMIN_EMAIL` | project default | Seeded admin email used by the local data pipeline |
+| `DEFAULT_ADMIN_PASSWORD` | `FIREBASE_AUTH` | Placeholder marker for Firebase-managed auth |
 
-### Production Checklist
+Production mode refuses to start when `CORS_ORIGINS` is empty or `*`.
 
-- [ ] Set `ENVIRONMENT=production`
-- [ ] Restrict `CORS_ORIGINS` to your domain
-- [ ] Ensure `serviceAccountKey.json` is secure
-- [ ] Set up HTTPS (nginx/caddy reverse proxy)
-- [ ] Configure database backups
-- [ ] Set up monitoring/alerting
+## Authentication and Roles
 
----
+The frontend authenticates users with Firebase. Backend requests must include a Firebase ID token:
+
+```http
+Authorization: Bearer <firebase-id-token>
+```
+
+The API verifies the token with `firebase-admin`, creates or updates a local user record, and enforces route access using local roles.
+
+Supported roles:
+
+| Role | Intended access |
+| --- | --- |
+| `pending` | Newly synced user awaiting role assignment |
+| `operator` | Operator batch entry and standard trace visibility |
+| `supervisor` | Operator review and inferred-link approval |
+| `quality` | Imports, compliance workflows, and quality review |
+| `manager` | Dashboard, trace, alert, and reporting workflows |
+| `admin` | User management, audit logs, health, and administrative actions |
+
+Admin role assignment is available through:
+
+```http
+PATCH /api/v1/auth/users/{user_id}/role?role=admin
+```
+
+## API Overview
+
+Most application endpoints are mounted under `/api/v1`.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/auth/firebase-sync` | Sync Firebase user into the local user table |
+| `GET` | `/api/v1/auth/me` | Return current user profile and role |
+| `GET` | `/api/v1/auth/users` | List users for admin management |
+| `PATCH` | `/api/v1/auth/users/{user_id}/role` | Update a user's role |
+| `GET` | `/api/v1/trace/dispatch/{order_id}` | Trace a dispatch order backward through production, QC, and raw material data |
+| `GET` | `/api/v1/trace/dispatch/{order_id}/export` | Export trace results |
+| `GET` | `/api/v1/alerts/lots/{lot_number}` | Analyze downstream impact for a flagged raw lot |
+| `GET` | `/api/v1/alerts/lots/{lot_number}/export` | Export lot impact results |
+| `POST` | `/api/v1/operator/batches` | Create an operator batch entry |
+| `GET` | `/api/v1/operator/batches/recent` | List recent operator entries |
+| `GET` | `/api/v1/operator/batches/pending` | List pending operator entries |
+| `POST` | `/api/v1/operator/batches/{entry_id}/approve` | Approve an operator entry |
+| `POST` | `/api/v1/imports` | Upload a CSV import |
+| `GET` | `/api/v1/imports` | List imports |
+| `GET` | `/api/v1/imports/{import_id}` | Inspect an import |
+| `DELETE` | `/api/v1/imports/{import_id}` | Roll back imported data |
+| `GET` | `/api/v1/review/unresolved-links` | List inferred links needing review |
+| `POST` | `/api/v1/review/unresolved-links/{production_id}/approve` | Approve an inferred link |
+| `POST` | `/api/v1/review/unresolved-links/{production_id}/reject` | Reject an inferred link |
+| `GET` | `/api/v1/dashboard/metrics` | Return dashboard metrics |
+| `POST` | `/api/v1/compliance/corrective-actions` | Create a corrective action |
+| `GET` | `/api/v1/compliance/corrective-actions` | List corrective actions |
+| `GET` | `/api/v1/admin/audit-events` | View audit events |
+| `GET` | `/api/v1/admin/pipeline-audit` | Inspect pipeline and imputation audit data |
+| `GET` | `/api/v1/admin/health` | Administrative health details |
+| `POST` | `/api/v1/ai/query` | AI-assisted logistics query endpoint |
+
+There are also legacy compatibility endpoints under `/api/*` for selected trace, alert, rebuild, and operator workflows.
+
+## Demo Data
+
+The root CSV files provide a complete sample traceability dataset:
+
+| File | Contents |
+| --- | --- |
+| `raw_materials_log.csv` | Raw material lots, suppliers, receipt data, and material metadata |
+| `production_log.csv` | Production batches, machines, operators, shifts, and raw-lot references |
+| `qc_inspection.csv` | QC results, defect types, and defect rates |
+| `dispatch_log.csv` | Dispatch orders, customers, dates, and batch references |
+| `supplier_master.csv` | Supplier metadata and approval status |
+| `defect_complaints.csv` | Customer complaints and root-cause references |
+
+The database is rebuilt from these files by `backend/app/pipeline.py`.
+
+## Testing
+
+Run backend tests from the repository root with:
+
+```bash
+PYTHONPATH=backend pytest backend/tests
+```
+
+Build the frontend with:
+
+```bash
+cd frontend
+npm run build
+```
+
+## Render Deployment
+
+The project is currently deployed on Render as a Docker web service. Render builds the root `Dockerfile`, which compiles the frontend and serves the FastAPI API plus the static React app from one container.
+
+Current production service:
+
+```text
+https://tracelink.ruchir.dev
+```
+
+Render should deploy automatically when changes are merged into the connected `main` branch, as long as auto-deploy is enabled for the service and the service is watching the correct GitHub repository and branch.
+
+For a manual deploy in Render:
+
+1. Open the `mccia-tracelink` web service.
+2. Confirm the connected branch is `main`.
+3. Use `Manual Deploy -> Deploy latest commit`.
+4. Confirm the deploy event references the latest Git commit from `main`.
+
+The service is expected to run with:
+
+```text
+PORT=8000
+```
+
+The Dockerfile command binds to Render's assigned port with `${PORT:-8000}`.
+
+## Docker
+
+Build the image locally:
+
+```bash
+docker build -t tracelink .
+```
+
+Run it:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e ENVIRONMENT=dev \
+  -e GOOGLE_APPLICATION_CREDENTIALS=/app/backend/serviceAccountKey.json \
+  tracelink
+```
+
+For production deployment, provide credentials securely through your platform's secret manager rather than baking them into the image.
+
+## Production Notes
+
+Before using TraceLink with live manufacturing data:
+
+- Restrict `CORS_ORIGINS` to approved domains.
+- Store Firebase service account credentials outside the repository.
+- Replace local/demo SQLite operation with a managed production database when concurrency, retention, backup, and migration controls are required.
+- Put API traffic behind HTTPS.
+- Define backup and restore procedures for database and uploaded source files.
+- Review `docs/data-cleaning-assumptions.md` before onboarding customer data.
+- Review `docs/scaling-to-10-lines.md` for multi-line or larger plant deployments.
 
 ## License
 
-MIT — Built for MMCIA Manufacturing Traceability.
+MIT

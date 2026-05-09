@@ -45,6 +45,7 @@ def rebuild_database(db_path: Path = DB_PATH) -> dict[str, Any]:
     if db_path.exists():
         db_path.unlink()
     conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     try:
         create_schema(conn)
         stats = load_all(conn)
@@ -244,8 +245,44 @@ def create_schema(conn: sqlite3.Connection) -> None:
 
 
 def load_all(conn: sqlite3.Connection) -> dict[str, Any]:
-    # Skip loading hardcoded test data for fresh testing with uploads
-    return {"raw_materials": 0, "production_batches": 0, "missing_batch_ids_inferred": 0, "qc_inspections": 0, "dispatch_orders": 0, "dispatch_batch_links": 0, "suppliers": 0, "complaints": 0}
+    """Load the bundled CSV dataset used for demos, tests, and fresh local DBs."""
+    file_order = [
+        ("supplier", "supplier"),
+        ("raw", "raw_materials"),
+        ("production", "production"),
+        ("qc", "qc"),
+        ("dispatch", "dispatch"),
+        ("complaints", "complaints"),
+    ]
+
+    stats: dict[str, Any] = {
+        "raw_materials": 0,
+        "production_batches": 0,
+        "missing_batch_ids_inferred": 0,
+        "qc_inspections": 0,
+        "dispatch_orders": 0,
+        "dispatch_batch_links": 0,
+        "suppliers": 0,
+        "complaints": 0,
+    }
+
+    for data_key, file_type in file_order:
+        path = DATA_FILES[data_key]
+        if not path.exists():
+            continue
+        rows = read_csv(path)
+        result = process_domain_import(conn, file_type, rows)
+        if file_type == "production":
+            stats["missing_batch_ids_inferred"] = result.get("total_missing", 0)
+
+    stats["suppliers"] = conn.execute("SELECT COUNT(*) FROM suppliers").fetchone()[0]
+    stats["raw_materials"] = conn.execute("SELECT COUNT(*) FROM raw_materials").fetchone()[0]
+    stats["production_batches"] = conn.execute("SELECT COUNT(*) FROM production_batches").fetchone()[0]
+    stats["qc_inspections"] = conn.execute("SELECT COUNT(*) FROM qc_inspections").fetchone()[0]
+    stats["dispatch_orders"] = conn.execute("SELECT COUNT(*) FROM dispatch_orders").fetchone()[0]
+    stats["dispatch_batch_links"] = conn.execute("SELECT COUNT(*) FROM dispatch_batches").fetchone()[0]
+    stats["complaints"] = conn.execute("SELECT COUNT(*) FROM complaints").fetchone()[0]
+    return stats
 
 
 def create_indexes(conn: sqlite3.Connection) -> None:
@@ -390,13 +427,35 @@ def process_domain_import(conn: sqlite3.Connection, file_type: str, valid_rows: 
     
     if file_type == "supplier":
         for r in valid_rows:
-            conn.execute("INSERT OR REPLACE INTO suppliers (supplier_id, supplier_name, material_supplied) VALUES (?, ?, ?)",
-                         (clean_text(r.get("supplier_id")), clean_text(r.get("supplier_name")), clean_text(r.get("material_supplied"))))
+            conn.execute(
+                """INSERT OR REPLACE INTO suppliers
+                (supplier_id, supplier_name, material_supplied, lead_time_days, approved_status)
+                VALUES (?, ?, ?, ?, ?)""",
+                (
+                    clean_text(r.get("supplier_id")),
+                    clean_text(r.get("supplier_name")),
+                    clean_text(r.get("material_supplied")),
+                    to_int(r.get("lead_time_days")),
+                    clean_text(r.get("approved_status")),
+                ),
+            )
             
     elif file_type == "raw_materials":
         for r in valid_rows:
-            conn.execute("INSERT OR IGNORE INTO raw_materials (lot_number, supplier_id, material_type, quantity_kg, receipt_date) VALUES (?, ?, ?, ?, ?)",
-                         (clean_text(r.get("lot_number")), clean_text(r.get("supplier_id")), clean_text(r.get("material_type")), to_float(r.get("quantity_kg")), parse_date(r.get("receipt_date"))))
+            conn.execute(
+                """INSERT OR IGNORE INTO raw_materials
+                (lot_number, supplier_id, material_type, quantity_kg, receipt_date, quality_grade, inspector_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    clean_text(r.get("lot_number")),
+                    clean_text(r.get("supplier_id")),
+                    clean_text(r.get("material_type")),
+                    to_float(r.get("quantity_kg")),
+                    parse_date(r.get("receipt_date")),
+                    clean_text(r.get("quality_grade")),
+                    clean_text(r.get("inspector_name")),
+                ),
+            )
 
     elif file_type == "production":
         # First pass: Insert all rows with batch_id

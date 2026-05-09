@@ -1,11 +1,13 @@
 import { FormEvent, type ReactNode, useEffect, useState } from "react";
 import { Link, Navigate, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  fetchRecentBatches,
+  approveLink,
+  createCorrectiveAction,
+  downloadAlertExport,
   downloadTraceExport,
   fetchCorrectiveActions,
   fetchAlert,
-  fetchDashboardMetrics,
+  fetchDashboard,
   fetchImports,
   uploadImport,
   deleteImport,
@@ -13,7 +15,6 @@ import {
   fetchUnresolvedLinks,
   postBatch,
   rejectLink,
-  approveTraceLink,
   type AlertResult,
   type DashboardMetrics,
   type TraceResult,
@@ -133,7 +134,7 @@ function Landing() {
   const [worstShift, setWorstShift] = useState<any>(null);
 
   useEffect(() => {
-    fetchDashboard().then(metrics => {
+    fetchDashboard().then((metrics: DashboardMetrics) => {
       if (metrics && metrics.shift_metrics && metrics.shift_metrics.length > 0) {
         // Find worst shift (max failures)
         const worst = metrics.shift_metrics.reduce((prev: any, current: any) => (prev.fail_count > current.fail_count) ? prev : current);
@@ -676,7 +677,7 @@ function DashboardScreen() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchDashboardMetrics().then(setMetrics).catch((e) => setError(e?.message || "Dashboard failed"));
+    fetchDashboard().then(setMetrics).catch((e: Error) => setError(e?.message || "Dashboard failed"));
   }, []);
 
   const isEmpty = metrics && metrics.batch_count === 0 && metrics.supplier_scorecard.length === 0;

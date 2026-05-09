@@ -1,10 +1,19 @@
 from fastapi.testclient import TestClient
 
-from app.config import settings
+from app.auth import get_current_user, require_operator_or_above
 from app.db import connect
 from app.linking import normalize_defect_type, split_batches
 from app.main import app
 from app.pipeline import ensure_users_table, rebuild_database, seed_default_admin
+
+
+TEST_ADMIN = {
+    "user_id": "test-admin",
+    "email": "admin@example.com",
+    "full_name": "Test Admin",
+    "role": "admin",
+    "is_active": 1,
+}
 
 
 def client():
@@ -15,16 +24,13 @@ def client():
         seed_default_admin(conn)
     finally:
         conn.close()
+    app.dependency_overrides[get_current_user] = lambda: TEST_ADMIN
+    app.dependency_overrides[require_operator_or_above] = lambda: TEST_ADMIN
     return TestClient(app)
 
 
 def auth_headers(c: TestClient) -> dict[str, str]:
-    res = c.post("/api/v1/auth/login", json={
-        "email": settings.DEFAULT_ADMIN_EMAIL,
-        "password": settings.DEFAULT_ADMIN_PASSWORD,
-    })
-    assert res.status_code == 200
-    return {"Authorization": f"Bearer {res.json()['access_token']}"}
+    return {"Authorization": "Bearer test-token"}
 
 
 def test_defect_normalization_variants():
