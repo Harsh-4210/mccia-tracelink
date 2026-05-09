@@ -132,8 +132,11 @@ Useful backend URLs:
 ```bash
 cd frontend
 npm install
+cp .env.example .env
 npm run dev
 ```
+
+Fill `frontend/.env` with the Firebase web app config from your Firebase project settings before starting the frontend.
 
 The Vite development server listens on:
 
@@ -155,6 +158,18 @@ TraceLink reads configuration from environment variables or a root `.env` file.
 | `CORS_ORIGINS` | `*` | Allowed browser origins; must be restricted in production |
 | `DEFAULT_ADMIN_EMAIL` | project default | Seeded admin email used by the local data pipeline |
 | `DEFAULT_ADMIN_PASSWORD` | `FIREBASE_AUTH` | Placeholder marker for Firebase-managed auth |
+
+Frontend Firebase configuration is read by Vite from `frontend/.env`:
+
+| Variable | Purpose |
+| --- | --- |
+| `VITE_FIREBASE_API_KEY` | Firebase web API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Firebase Auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | Firebase project ID |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Firebase storage bucket |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Firebase messaging sender ID |
+| `VITE_FIREBASE_APP_ID` | Firebase web app ID |
+| `VITE_FIREBASE_MEASUREMENT_ID` | Firebase measurement ID, if analytics is enabled |
 
 Production mode refuses to start when `CORS_ORIGINS` is empty or `*`.
 
