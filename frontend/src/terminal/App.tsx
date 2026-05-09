@@ -362,6 +362,8 @@ function TraceScreen() {
     }
   }
 
+  const hasFailedBatch = result?.batches.some((batch) => batch.qc?.pass_fail === "FAIL") ?? false;
+
   return (
     <DashboardShell page="TRACE">
       <div className="d1-pageHead">
@@ -403,13 +405,19 @@ function TraceScreen() {
                 <button className="d1-btn" onClick={exportTrace}>{t("trace.export")}</button>
               </div>
 
+              {hasFailedBatch && (
+                <div className="d1-error" style={{ width: "100%", fontWeight: 700 }}>
+                  QC FAIL detected in this dispatch chain. Prioritize containment, review affected batches, and export the trace for follow-up.
+                </div>
+              )}
+
               <div style={{ padding: "16px", background: "var(--bg)", borderRadius: "var(--radius)", border: "1px solid var(--line)" }}>
                 <h4 style={{ margin: "0 0 16px", color: "var(--ink-dim)", textTransform: "uppercase", fontSize: "12px", letterSpacing: "0.05em" }}>Shipment Status</h4>
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   {result.batches.map((batch, i) => (
                     <div key={batch.batch_id} style={{ display: "flex", gap: "16px" }}>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "24px" }}>
-                        <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: batch.qc?.pass_fail === "PASS" ? "#10b981" : "var(--amber)", zIndex: 2 }} />
+                        <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: batch.qc?.pass_fail === "PASS" ? "#10b981" : "var(--red)", zIndex: 2 }} />
                         {i !== result.batches.length - 1 && <div style={{ flex: 1, width: "2px", background: "var(--line)", margin: "4px 0" }} />}
                       </div>
                       <div style={{ flex: 1, paddingBottom: "16px" }}>
@@ -517,6 +525,8 @@ function AlertScreen() {
         {result && (
           <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 20 }}>
             <div className="d1-grid3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+              <div><span className="key">Affected Orders</span><span className="val" style={{ fontSize: 22 }}>{result.summary.dispatch_order_count || result.affected_dispatch_orders.length}</span></div>
+              <div><span className="key">Failed Batches</span><span className="val" style={{ fontSize: 22, color: "var(--red)" }}>{result.summary.failed_batch_count || result.failed_batches?.length || 0}</span></div>
               <div><span className="key">Lot Investigated</span><span className="val" style={{ fontSize: 22 }}>{result.lot_number}</span></div>
               <div><span className="key">Financial Exposure</span><span className="val" style={{ fontSize: 22, color: "var(--amber)" }}>₹ {result.summary.financial_exposure?.toLocaleString() || 0}</span></div>
               <div><span className="key">Escaped Shipments</span><span className="val" style={{ fontSize: 22, color: "var(--red)" }}>{result.summary.escaped_shipments_count || 0}</span></div>
@@ -541,7 +551,7 @@ function AlertScreen() {
                       <td style={{ fontFamily: "monospace" }}>{row.batch_id}</td>
                       <td>
                         {row.pass_fail ? (
-                          <span className={`badge ${row.pass_fail === "PASS" ? "success" : "delay"}`}>
+                          <span className={`badge ${row.pass_fail === "PASS" ? "success" : "danger"}`}>
                             {row.pass_fail}{row.defect_rate_pct ? ` / ${row.defect_rate_pct}%` : ""}
                           </span>
                         ) : "—"}
@@ -699,7 +709,11 @@ function DashboardScreen() {
               <div style={{ width: 48, height: 48 }}>{Icon.dashboard}</div>
             </div>
             <h2 style={{ fontSize: 24, margin: "0 0 12px" }}>{t("dash.empty.title")}</h2>
-            <p style={{ color: "var(--ink-mid)", fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>{t("dash.empty.desc")}</p>
+            <p style={{ color: "var(--ink-mid)", fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
+              {user?.role === "operator"
+                ? "No production data is available yet. Use the shop-floor logger to capture batch activity, then sync when you are online."
+                : "No production data is available yet. Import the traceability CSV files to populate dashboard metrics and review queues."}
+            </p>
             {["manager", "quality", "admin"].includes(user?.role || "") ? (
               <Link to="/app/import" className="d1-btn amber" style={{ display: "inline-block", textDecoration: "none", padding: "10px 24px" }}>{t("dash.empty.btn")}</Link>
             ) : (
