@@ -89,13 +89,13 @@ export type DashboardMetrics = {
 
 // ── Trace ────────────────────────────────────────────────────
 export async function fetchTrace(orderId: string): Promise<TraceResult> {
-  const res = await authFetch(`/api/v1/trace/dispatch/${encodeURIComponent(orderId.trim())}`);
+  const res = await authFetch(`/api/v1/trace/${encodeURIComponent(orderId.trim())}`);
   if (!res.ok) throw new Error("Dispatch order not found");
   return res.json();
 }
 
 export async function fetchTraceV1(orderId: string): Promise<TraceResult> {
-  const res = await authFetch(`/api/v1/trace/dispatch/${encodeURIComponent(orderId.trim())}`);
+  const res = await authFetch(`/api/v1/trace/${encodeURIComponent(orderId.trim())}`);
   if (!res.ok) throw new Error("Dispatch order not found");
   return res.json();
 }
@@ -208,7 +208,7 @@ export async function updateCorrectiveAction(caId: string, data: Record<string, 
 }
 
 // ── Review Queue ─────────────────────────────────────────────
-export async function fetchUnresolvedLinks(limit = 50, offset = 0): Promise<any> {
+export async function fetchUnresolvedLinks(limit = 200, offset = 0): Promise<any> {
   const res = await authFetch(`/api/v1/review/unresolved-links?limit=${limit}&offset=${offset}`);
   if (!res.ok) throw new Error("Failed to fetch unresolved links");
   return res.json();

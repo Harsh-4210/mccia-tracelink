@@ -126,7 +126,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         order_id TEXT,
         batch_id TEXT,
         user_id TEXT,
-        PRIMARY KEY(order_id, batch_id)
+        PRIMARY KEY(order_id, batch_id, user_id)
     );
 
     CREATE TABLE complaints (
@@ -236,7 +236,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         reviewed_by TEXT,
         reviewed_at TEXT DEFAULT CURRENT_TIMESTAMP,
         notes TEXT,
-        PRIMARY KEY(batch_id, lot_number)
+        PRIMARY KEY(batch_id, lot_number, user_id)
     );
 
     -- ── Corrective actions / CAPA (Week 7-8) ────────────────────
@@ -427,8 +427,11 @@ def to_int(value: Any) -> int | None:
 
 def to_float(value: Any) -> float | None:
     try:
-        return float(value) if value not in (None, "") else None
-    except ValueError:
+        if value in (None, ""):
+            return None
+        cleaned = str(value).replace("₹", "").replace(",", "").strip()
+        return float(cleaned) if cleaned else None
+    except (ValueError, TypeError):
         return None
 
 import uuid

@@ -19,8 +19,9 @@ async def list_audit_events(
 ):
     conn = connect()
     try:
-        conditions = []
-        params: list = []
+        user_id = admin.get("user_id")
+        conditions = ["user_id = ?"]
+        params: list = [user_id]
 
         if action:
             conditions.append("action LIKE ?")
@@ -53,8 +54,10 @@ async def list_audit_events(
 async def list_users(admin: dict = Depends(require_admin)):
     conn = connect()
     try:
+        user_id = admin.get("user_id")
         rows = conn.execute(
-            "SELECT user_id, email, full_name, role, is_active, created_at FROM users ORDER BY created_at DESC"
+            "SELECT user_id, email, full_name, role, is_active, created_at FROM users WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,)
         ).fetchall()
         return {"users": [dict(r) for r in rows]}
     finally:
@@ -72,7 +75,7 @@ async def system_health(user: dict = Depends(get_current_user)):
                        "raw_materials", "suppliers", "complaints", "operator_entries",
                        "audit_events", "source_files", "corrective_actions"]:
             try:
-                row = conn.execute(f"SELECT COUNT(*) as cnt FROM {table}").fetchone()
+                row = conn.execute(f"SELECT COUNT(*) as cnt FROM {table} WHERE user_id = ?", (user.get("user_id"),)).fetchone()
                 table_counts[table] = row["cnt"]
             except Exception:
                 table_counts[table] = -1
@@ -90,11 +93,12 @@ async def system_health(user: dict = Depends(get_current_user)):
 async def pipeline_audit(admin: dict = Depends(require_admin)):
     conn = connect()
     try:
+        user_id = admin.get("user_id")
         # Row counts
         counts = {}
         for t in ["users", "production_batches", "qc_inspections", "dispatch_orders", "raw_materials", "complaints"]:
             try:
-                counts[t] = conn.execute(f"SELECT COUNT(*) as cnt FROM {t}").fetchone()["cnt"]
+                counts[t] = conn.execute(f"SELECT COUNT(*) as cnt FROM {t} WHERE user_id = ?", (user_id,)).fetchone()["cnt"]
             except:
                 counts[t] = 0
 
@@ -108,27 +112,28 @@ async def pipeline_audit(admin: dict = Depends(require_admin)):
                 SUM(CASE WHEN inference_confidence = 0.0 AND inferred_batch_id = 1 THEN 1 ELSE 0 END) as rule5_0,
                 SUM(CASE WHEN inferred_batch_id = 1 THEN 1 ELSE 0 END) as total_inferred
             FROM production_batches
-        """).fetchone()
+            WHERE user_id = ?
+        """, (user_id,)).fetchone()
 
         # Temporal integrity: QC before production
         temporal_warnings = conn.execute("""
             SELECT q.batch_id, q.inspection_date, p.production_date
             FROM qc_inspections q
-            JOIN production_batches p ON p.batch_id = q.batch_id
-            WHERE q.inspection_date < p.production_date
+            JOIN production_batches p ON p.batch_id = q.batch_id AND p.user_id = q.user_id
+            WHERE q.inspection_date < p.production_date AND q.user_id = ?
             LIMIT 100
-        """).fetchall()
+        """, (user_id,)).fetchall()
 
         # LOT anomaly flags: Lots with complaints but no QC failure
         lot_anomalies = conn.execute("""
             SELECT p.input_lot_ref, COUNT(DISTINCT c.complaint_id) as complaint_count
             FROM production_batches p
-            JOIN complaints c ON c.root_cause_identified LIKE '%' || p.input_lot_ref || '%'
-            WHERE p.batch_id NOT IN (SELECT batch_id FROM qc_inspections WHERE pass_fail = 'FAIL')
+            JOIN complaints c ON c.root_cause_identified LIKE '%' || p.input_lot_ref || '%' AND c.user_id = p.user_id
+            WHERE p.user_id = ? AND p.batch_id NOT IN (SELECT batch_id FROM qc_inspections WHERE pass_fail = 'FAIL' AND user_id = ?)
             GROUP BY p.input_lot_ref
             ORDER BY complaint_count DESC
             LIMIT 50
-        """).fetchall()
+        """, (user_id, user_id)).fetchall()
 
         return {
             "row_counts": counts,

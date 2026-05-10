@@ -31,7 +31,7 @@ async def list_unresolved_links(
             FROM production_batches p
             LEFT JOIN trace_reviews tr ON tr.batch_id = p.batch_id AND tr.lot_number = p.input_lot_ref AND tr.user_id = p.user_id
             WHERE p.inferred_batch_id = 1 AND p.user_id = ?
-            ORDER BY p.inference_confidence ASC, p.production_date DESC
+            ORDER BY p.inference_confidence DESC, p.production_date DESC
             LIMIT ? OFFSET ?
         """, (user_id, limit, offset)).fetchall()
 

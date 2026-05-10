@@ -65,7 +65,7 @@ async def dashboard_metrics(user: dict = Depends(get_current_user)):
                    COUNT(DISTINCT c.complaint_id) as complaint_count
             FROM suppliers s
             LEFT JOIN raw_materials r ON r.supplier_id = s.supplier_id AND r.user_id = s.user_id
-            LEFT JOIN complaints c ON c.root_cause_identified LIKE '%' || s.supplier_name || '%' AND c.user_id = s.user_id
+            LEFT JOIN complaints c ON (c.root_cause_identified LIKE '%' || s.supplier_name || '%' OR c.root_cause_identified LIKE '%' || s.supplier_id || '%') AND c.user_id = s.user_id
             WHERE s.user_id = ?
             GROUP BY s.supplier_id
             ORDER BY complaint_count DESC
@@ -80,9 +80,12 @@ async def dashboard_metrics(user: dict = Depends(get_current_user)):
         ).fetchone()["cnt"]
 
         # Unresolved links (inferred, not reviewed)
-        unresolved = conn.execute(
-            "SELECT COUNT(*) as cnt FROM production_batches WHERE inferred_batch_id = 1 AND user_id = ?", (user_id,)
-        ).fetchone()["cnt"]
+        unresolved = conn.execute("""
+            SELECT COUNT(*) as cnt 
+            FROM production_batches p
+            LEFT JOIN trace_reviews tr ON tr.batch_id = p.batch_id AND tr.lot_number = p.input_lot_ref AND tr.user_id = p.user_id
+            WHERE p.inferred_batch_id = 1 AND p.user_id = ? AND tr.status IS NULL
+        """, (user_id,)).fetchone()["cnt"]
 
         # Recent imports
         recent_imports = [dict(r) for r in conn.execute(

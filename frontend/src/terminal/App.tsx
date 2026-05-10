@@ -80,6 +80,38 @@ function OnboardingGuide({ onClose }: { onClose: () => void }) {
   );
 }
 
+function HelpScreen() {
+  const { t } = useI18n();
+  return (
+    <DashboardShell page="HELP">
+      <div className="d1-pageHead">
+        <div>
+          <div className="crumb">Guide</div>
+          <h1>System Help & Documentation</h1>
+        </div>
+      </div>
+      <div className="d1-panel d1-frame" style={{ maxWidth: 800, margin: "0 auto" }}>
+        <h2 style={{ fontSize: 22, margin: 0, fontWeight: 700 }}>{t("guide.title")}</h2>
+        <p style={{ color: "var(--ink-mid)", fontSize: 14, lineHeight: 1.6, margin: "6px 0 24px" }}>{t("guide.intro")}</p>
+        <div className="d1-guide-list">
+          {iconKeys.map((k) => (
+            <div key={k} className="d1-guide-item" style={{ marginBottom: 16 }}>
+              <div className="d1-guide-icon">{Icon[k]}</div>
+              <div>
+                <strong style={{ fontSize: 16 }}>{t(`nav.${k}`)}</strong>
+                <p style={{ color: "var(--ink-mid)", fontSize: 14, margin: "4px 0 0", lineHeight: 1.5 }}>{t(`desc.${k}`)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="d1-guide-tip" style={{ marginTop: 24, padding: 16, background: "rgba(245, 158, 11, 0.1)", borderRadius: 8, borderLeft: "4px solid var(--amber)" }}>
+          <strong>{t("guide.tip")}</strong> {t("guide.tip.text")}
+        </div>
+      </div>
+    </DashboardShell>
+  );
+}
+
 function useOnline() {
   const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {
@@ -392,6 +424,7 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
     { to: "/app/review", icon: Icon.review, label: t("nav.review") },
     { to: "/app/compliance", icon: Icon.compliance, label: t("nav.compliance") },
     { to: "/app/audit", icon: Icon.audit, label: "Data Audit" },
+    { to: "/app/help", icon: Icon.guide, label: "Help Guide" },
   ];
 
   // RBAC UNLOCKED: Show all navigation items to every authenticated user
@@ -414,7 +447,13 @@ function DashboardShell({ children, page }: { children: ReactNode; page: string 
               {user?.email?.[0].toUpperCase() || "U"}
             </div>
             <div style={{ flex: 1, overflow: "hidden" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.email || "authenticated"}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: "4px" }}>
+                {user?.email || "authenticated"}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--ink-dim)", fontFamily: "monospace", display: "flex", alignItems: "center", gap: "4px" }} title="User ID: Internal system identifier for your data isolation.">
+                ID: {user?.user_id?.substring(0, 8)}...
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              </div>
             </div>
           </Link>
         </aside>
@@ -624,18 +663,124 @@ function TraceScreen() {
         </div>
 
         <div className="split-right">
-          <div style={{ width: "100%", height: "100%", position: "relative", background: "url('https://maps.googleapis.com/maps/api/staticmap?center=40.7128,-74.0060&zoom=11&size=600x800&maptype=roadmap&style=element:geometry%7Ccolor:0xf5f5f5&style=element:labels.icon%7Cvisibility:off&style=element:labels.text.fill%7Ccolor:0x616161&style=element:labels.text.stroke%7Ccolor:0xf5f5f5&style=feature:administrative.land_parcel%7Celement:labels.text.fill%7Ccolor:0xbdbdbd&style=feature:poi%7Celement:geometry%7Ccolor:0xeeeeee&style=feature:poi%7Celement:labels.text.fill%7Ccolor:0x757575&style=feature:poi.park%7Celement:geometry%7Ccolor:0xe5e5e5&style=feature:poi.park%7Celement:labels.text.fill%7Ccolor:0x9e9e9e&style=feature:road%7Celement:geometry%7Ccolor:0xffffff&style=feature:road.arterial%7Celement:labels.text.fill%7Ccolor:0x757575&style=feature:road.highway%7Celement:geometry%7Ccolor:0xdadada&style=feature:road.highway%7Celement:labels.text.fill%7Ccolor:0x616161&style=feature:road.local%7Celement:labels.text.fill%7Ccolor:0x9e9e9e&style=feature:transit.line%7Celement:geometry%7Ccolor:0xe5e5e5&style=feature:transit.station%7Celement:geometry%7Ccolor:0xeeeeee&style=feature:water%7Celement:geometry%7Ccolor:0xc9c9c9&style=feature:water%7Celement:labels.text.fill%7Ccolor:0x9e9e9e&key=YOUR_API_KEY') center/cover no-repeat" }}>
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.05)" }} />
-            {/* Map Placeholder Content */}
-            <div style={{ position: "absolute", bottom: "24px", right: "24px", background: "var(--bg-2)", padding: "8px", borderRadius: "var(--radius)", boxShadow: "var(--shadow)", display: "flex", gap: "8px" }}>
-              <button className="d1-btn" style={{ padding: "8px" }}>Satellite</button>
-              <button className="d1-btn" style={{ padding: "8px" }}>Map View</button>
-            </div>
-            {result && (
-              <div style={{ position: "absolute", top: "40%", left: "40%", background: "#0f172a", color: "white", padding: "16px", borderRadius: "8px", width: "220px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.3)" }}>
-                <div style={{ fontWeight: 600, marginBottom: "4px" }}>Warehouse Route</div>
-                <div style={{ fontSize: "12px", color: "#94a3b8" }}>Order ID: {result.dispatch.order_id}</div>
-                <div style={{ marginTop: "12px", width: "8px", height: "8px", background: "var(--amber)", borderRadius: "50%" }}></div>
+          <div style={{ width: "100%", height: "100%", padding: "40px", background: "var(--bg-2)", display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center", overflowY: "auto", position: "relative" }}>
+            {!result ? (
+              <div style={{ color: "var(--ink-dim)", textAlign: "center", maxWidth: "300px", marginTop: "100px" }}>
+                <div className="pulse-slow" style={{ width: "80px", height: "80px", background: "var(--bg)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", border: "1px solid var(--line)" }}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="1.5">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line>
+                  </svg>
+                </div>
+                <h3 style={{ color: "var(--ink)", marginBottom: "8px" }}>Interactive Supply Chain Map</h3>
+                <p style={{ fontSize: "14px" }}>Enter an order ID to visualize the full supply chain trace network across suppliers and production.</p>
+              </div>
+            ) : (
+              <div style={{ width: "100%", maxWidth: "600px", display: "flex", flexDirection: "column", gap: "0", animation: "fadeInUp 0.6s ease-out" }}>
+                {/* ── Customer Node ── */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
+                  <div style={{ padding: "20px 32px", background: "var(--amber)", color: "white", borderRadius: "16px", textAlign: "center", fontWeight: "bold", zIndex: 5, boxShadow: "0 10px 25px -5px rgba(245, 158, 11, 0.4)", width: "300px" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "1px", opacity: 0.9, marginBottom: "4px" }}>Destination Customer</div>
+                    <div style={{ fontSize: "20px", fontWeight: 800 }}>{result.dispatch.customer_id}</div>
+                    <div style={{ fontSize: "13px", fontWeight: "normal", opacity: 0.8, marginTop: "4px" }}>Order {result.dispatch.order_id}</div>
+                  </div>
+                  
+                  <div style={{ height: "40px", width: "2px", background: "var(--amber)", opacity: 0.5 }}></div>
+                </div>
+
+                {/* ── Distribution Node ── */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <div style={{ padding: "16px 24px", background: "var(--bg)", border: "2px solid var(--amber)", borderRadius: "14px", textAlign: "center", zIndex: 4, width: "260px", boxShadow: "var(--shadow)" }}>
+                    <div style={{ fontWeight: 700, fontSize: "14px" }}>Distribution Center</div>
+                    <div style={{ fontSize: "12px", color: "var(--ink-dim)", marginTop: "4px" }}>Dispatched: {result.dispatch.dispatch_date}</div>
+                  </div>
+                  <div style={{ height: "40px", width: "2px", background: "var(--line)" }}></div>
+                </div>
+
+                {/* ── Anomalies Alert ── */}
+                {result.anomalies.length > 0 && (
+                  <div style={{ margin: "0 auto 30px", width: "100%", maxWidth: "500px", padding: "16px", background: "rgba(239, 68, 68, 0.05)", border: "1px dashed var(--red)", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--red)", fontWeight: 700, fontSize: "13px" }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                      CROSS-CHAINING ANOMALIES DETECTED
+                    </div>
+                    {result.anomalies.map((a, i) => (
+                      <div key={i} style={{ fontSize: "12px", color: "var(--ink)" }}>• {a}</div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── Production Batches (Branching out) ── */}
+                <div style={{ display: "flex", justifyContent: "center", gap: "32px", flexWrap: "wrap" }}>
+                  {result.batches.map((batch, i) => (
+                    <div key={batch.batch_id} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "280px", marginBottom: "20px" }}>
+                      <div className="trace-node" style={{ 
+                        width: "100%",
+                        padding: "20px", 
+                        background: "var(--bg)", 
+                        border: batch.qc?.pass_fail === "FAIL" ? "2px solid var(--red)" : "1px solid var(--line)", 
+                        borderRadius: "16px", 
+                        zIndex: 3, 
+                        position: "relative", 
+                        boxShadow: batch.qc?.pass_fail === "FAIL" ? "0 12px 30px -10px rgba(239, 68, 68, 0.4)" : "var(--shadow)",
+                        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                      }}>
+                        {/* Link Type Badge */}
+                        <div style={{ position: "absolute", top: "-10px", right: "12px", padding: "2px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "var(--bg-2)", border: "1px solid var(--line)", textTransform: "uppercase" }}>
+                          {batch.link_type}
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+                          <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--ink)" }}>{batch.batch_id}</span>
+                          <div style={{ 
+                            padding: "4px 10px", 
+                            borderRadius: "6px", 
+                            fontSize: "11px", 
+                            fontWeight: 800, 
+                            background: batch.qc?.pass_fail === "PASS" ? "rgba(16, 185, 129, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                            color: batch.qc?.pass_fail === "PASS" ? "#10b981" : "var(--red)",
+                            border: `1px solid ${batch.qc?.pass_fail === "PASS" ? "#10b981" : "var(--red)"}`
+                          }}>
+                            {batch.qc?.pass_fail || "PENDING"}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "12px" }}>
+                          <div style={{ background: "var(--bg-2)", padding: "10px", borderRadius: "10px", border: "1px solid var(--line)" }}>
+                            <div style={{ color: "var(--ink-dim)", fontSize: "10px", textTransform: "uppercase", marginBottom: "4px", fontWeight: 600 }}>Process</div>
+                            <div style={{ fontWeight: 700 }}>{batch.production?.machine_id || "N/A"}</div>
+                            <div style={{ fontSize: "10px", opacity: 0.7 }}>{batch.production?.shift} Shift</div>
+                          </div>
+                          <div style={{ background: "var(--bg-2)", padding: "10px", borderRadius: "10px", border: "1px solid var(--line)" }}>
+                            <div style={{ color: "var(--ink-dim)", fontSize: "10px", textTransform: "uppercase", marginBottom: "4px", fontWeight: 600 }}>Material Lot</div>
+                            <div style={{ fontWeight: 700 }}>{batch.production?.input_lot_ref || "MISSING"}</div>
+                            <div style={{ fontSize: "10px", opacity: 0.7 }}>{batch.raw_material?.supplier?.supplier_id || "No Trace"}</div>
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", gap: "10px" }}>
+                          <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "var(--bg-2)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)" }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-dim)" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: "10px", color: "var(--ink-dim)", textTransform: "uppercase" }}>Origin Supplier</div>
+                            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {batch.raw_material?.supplier?.supplier_name || "Direct Sourcing"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Connection to Origin */}
+                      <div style={{ height: "40px", width: "2px", background: "var(--line)", borderLeft: "2px dashed var(--line)" }}></div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Origin Node ── */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                   <div style={{ width: "16px", height: "16px", borderRadius: "50%", background: "var(--line)", boxShadow: "0 0 0 4px var(--bg), 0 0 0 6px var(--line)" }}></div>
+                   <div style={{ textAlign: "center", fontSize: "13px", color: "var(--ink-dim)", marginTop: "16px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "2px" }}>Supply Chain Origin</div>
+                </div>
               </div>
             )}
           </div>
@@ -940,20 +1085,30 @@ function DashboardScreen() {
                 ))}
               </tbody>
             </table>
-            <h2>{t("dash.supplier_card")}</h2>
-            <table className="d1-table">
-              <thead><tr><th>{t("dash.supplier_col")}</th><th>{t("dash.status")}</th><th>{t("dash.lots")}</th><th>{t("dash.complaints")}</th></tr></thead>
-              <tbody>
-                {metrics.supplier_scorecard.map((row) => (
-                  <tr key={row.supplier_id}>
-                    <td>{row.supplier_name}</td>
-                    <td>{row.approved_status}</td>
-                    <td>{row.lots_supplied}</td>
-                    <td>{row.complaint_count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginTop: "32px" }}>
+               <div style={{ background: "var(--bg-2)", padding: "20px", borderRadius: "16px", border: "1px solid var(--border)" }}>
+                  <h2 style={{ marginTop: 0, fontSize: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    Complaints by OEM
+                  </h2>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {metrics.complaints_by_oem?.map(c => (
+                      <div key={c.oem_id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px", background: "var(--bg)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+                        <span style={{ fontWeight: 600 }}>{c.oem_id}</span>
+                        <span style={{ padding: "2px 10px", borderRadius: "100px", background: "var(--red-light)", color: "var(--red)", fontSize: "12px", fontWeight: 700 }}>{c.count} Complaints</span>
+                      </div>
+                    ))}
+                    {(!metrics.complaints_by_oem || metrics.complaints_by_oem.length === 0) && <div style={{ textAlign: "center", padding: "20px", color: "var(--ink-dim)" }}>No active complaints</div>}
+                  </div>
+               </div>
+               
+               <div style={{ background: "var(--bg-2)", padding: "20px", borderRadius: "16px", border: "1px solid var(--border)", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
+                  <div style={{ fontSize: "12px", color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "8px" }}>Total Financial Impact</div>
+                  <div style={{ fontSize: "36px", fontWeight: 800, color: "var(--ink)" }}>₹{metrics.total_financial_impact?.toLocaleString()}</div>
+                  <div style={{ fontSize: "13px", color: "var(--ink-mid)", marginTop: "12px" }}>Cumulative risk across {metrics.complaints_by_oem?.length || 0} customers</div>
+               </div>
+            </div>
           </div>
         </section>
       )}
@@ -1085,25 +1240,73 @@ function ReviewScreen() {
         </div>
       </div>
       <section className="d1-panel d1-frame">
-        {message && <div className="d1-syncbar">{message}</div>}
-        <table className="d1-table">
-          <thead><tr><th>{t("review.batch")}</th><th>{t("review.lot")}</th><th>{t("review.confidence")}</th><th>{t("review.reason")}</th><th>{t("review.status")}</th><th>{t("review.action")}</th></tr></thead>
-          <tbody>
-            {links.map((row) => (
-              <tr key={row.production_id}>
-                <td>{row.batch_id}</td>
-                <td>{row.input_lot_ref}</td>
-                <td>{row.inference_confidence}</td>
-                <td>{row.inference_reason}</td>
-                <td>{row.review_status}</td>
-                <td>
-                  <button className="d1-inlinebtn" onClick={() => act(row.production_id, "approve")}>{t("review.approve")}</button>
-                  <button className="d1-inlinebtn" onClick={() => act(row.production_id, "reject")} style={{ marginLeft: 6 }}>{t("review.reject")}</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {message && <div className="d1-syncbar" style={{ marginBottom: "20px" }}>{message}</div>}
+        
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {links.map((row) => (
+            <div key={row.production_id} style={{ 
+              background: "var(--bg)", 
+              border: "1px solid var(--border)", 
+              borderRadius: "12px", 
+              padding: "20px",
+              display: "grid",
+              gridTemplateColumns: "1.5fr 3fr auto",
+              gap: "24px",
+              alignItems: "center",
+              boxShadow: "var(--shadow-sm)"
+            }}>
+              <div>
+                <div style={{ fontSize: "11px", color: "var(--ink-dim)", textTransform: "uppercase", letterSpacing: "1px" }}>Batch Reference</div>
+                <div style={{ fontSize: "16px", fontWeight: 800 }}>{row.batch_id}</div>
+                <div style={{ fontSize: "12px", color: "var(--ink-mid)", marginTop: "4px" }}>Source: Production Logs</div>
+              </div>
+
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                   <div style={{ padding: "2px 8px", borderRadius: "4px", background: "rgba(139, 92, 246, 0.1)", color: "var(--primary)", fontSize: "10px", fontWeight: 800 }}>INFERRED LOT</div>
+                   <div style={{ fontWeight: 600, fontSize: "14px" }}>{row.input_lot_ref}</div>
+                </div>
+                <div style={{ fontSize: "13px", color: "var(--ink-mid)", fontStyle: "italic" }}>
+                  "{row.inference_reason}"
+                </div>
+                <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "12px" }}>
+                   <div style={{ flex: 1, height: "6px", background: "var(--bg-2)", borderRadius: "3px", border: "1px solid var(--border)", overflow: "hidden" }}>
+                      <div style={{ width: `${row.inference_confidence * 100}%`, height: "100%", background: "var(--primary)" }}></div>
+                   </div>
+                   <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--primary)" }}>{Math.round(row.inference_confidence * 100)}% Match</div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {row.review_status !== 'pending' ? (
+                  <div style={{ 
+                    padding: "8px 16px", 
+                    borderRadius: "8px", 
+                    fontSize: "11px", 
+                    fontWeight: 800, 
+                    textTransform: "uppercase",
+                    textAlign: "center",
+                    background: row.review_status === "approved" ? "rgba(16, 185, 129, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                    color: row.review_status === "approved" ? "#10b981" : "var(--red)",
+                    border: `1px solid ${row.review_status === "approved" ? "#10b981" : "var(--red)"}`
+                  }}>
+                    {row.review_status}
+                  </div>
+                ) : (
+                  <>
+                    <button className="d1-btn amber" style={{ width: "120px", padding: "8px" }} onClick={() => act(row.production_id, "approve")}>Approve</button>
+                    <button className="d1-btn ghost" style={{ width: "120px", padding: "8px", color: "var(--red)" }} onClick={() => act(row.production_id, "reject")}>Reject</button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+          {links.length === 0 && (
+            <div style={{ textAlign: "center", padding: "40px", color: "var(--ink-dim)" }}>
+               No pending inferences to review. All traces are deterministic.
+            </div>
+          )}
+        </div>
       </section>
     </DashboardShell>
   );
@@ -1360,23 +1563,62 @@ function AccountScreen() {
   );
 }
 
+type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  data?: any;
+  ms?: number;
+};
+
 function AiScreen() {
   const [query, setQuery] = useState("");
-  const [response, setResponse] = useState<any>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const saved = sessionStorage.getItem("ai_chat_history");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return [];
+  });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    sessionStorage.setItem("ai_chat_history", JSON.stringify(messages));
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   async function submitQuery(e: FormEvent) {
     e.preventDefault();
     if (!query.trim()) return;
+
+    const userMsg: ChatMessage = {
+      id: Date.now().toString() + "_user",
+      role: 'user',
+      text: query.trim()
+    };
+    
+    setMessages(prev => [...prev, userMsg]);
+    setQuery("");
     setLoading(true);
-    setError("");
-    setResponse(null);
+
     try {
-      const res = await fetchAiQuery(query);
-      setResponse(res);
+      const res = await fetchAiQuery(userMsg.text);
+      const assistantMsg: ChatMessage = {
+        id: Date.now().toString() + "_assistant",
+        role: 'assistant',
+        text: res.text,
+        data: res.data,
+        ms: res.query_ms
+      };
+      setMessages(prev => [...prev, assistantMsg]);
     } catch (e: any) {
-      setError(e.message || "Query failed");
+      const errorMsg: ChatMessage = {
+        id: Date.now().toString() + "_error",
+        role: 'assistant',
+        text: "I ran into a bit of trouble connecting to the database just now. Here's what happened: " + (e.message || "Unknown error") + ". Please try asking again in a moment."
+      };
+      setMessages(prev => [...prev, errorMsg]);
     } finally {
       setLoading(false);
     }
@@ -1384,57 +1626,122 @@ function AiScreen() {
 
   return (
     <DashboardShell page="AI">
-      <div className="d1-pageHead">
-        <div>
-          <div className="crumb">Assistant</div>
-          <h1>AI Assistant</h1>
-        </div>
-      </div>
-      <div className="d1-frame" style={{ marginBottom: "24px" }}>
-        <form onSubmit={submitQuery} style={{ display: "flex", gap: "12px" }}>
-          <input 
-            className="d1-input" 
-            style={{ flex: 1 }}
-            value={query} 
-            onChange={(e) => setQuery(e.target.value)} 
-            placeholder="Ask anything — e.g. 'worst shift', 'show lot LOT-2023-114', 'machine MC-03', 'system overview'..." 
-            autoFocus
-          />
-          <button className="d1-btn amber" type="submit" disabled={loading}>
-            {loading ? "Searching..." : "Ask AI"}
-          </button>
-        </form>
-        {error && <div className="d1-error" style={{ marginTop: 16 }}>{error}</div>}
-      </div>
-
-      {response && (
-        <div className="d1-frame">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-            <h3 style={{ margin: 0, fontSize: "18px" }}>AI Response</h3>
-            <span style={{ fontSize: "12px", color: "var(--ink-dim)" }}>{response.query_ms}ms</span>
+      <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)', position: 'relative' }}>
+        <div className="d1-pageHead" style={{ flexShrink: 0 }}>
+          <div>
+            <div className="crumb">Assistant</div>
+            <h1>TraceLink Chat</h1>
           </div>
-          <p style={{ fontSize: "15px", lineHeight: 1.5, color: "var(--ink)" }}>{response.text}</p>
-          
-          {response.data && response.data.length > 0 && (
-            <div className="d1-table-wrapper" style={{ marginTop: "24px" }}>
-              <table className="d1-table">
-                <thead>
-                  <tr>
-                    {Object.keys(response.data[0]).map(k => <th key={k}>{k.replace(/_/g, " ")}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {response.data.map((row: any, i: number) => (
-                    <tr key={i}>
-                      {Object.values(row).map((val: any, j: number) => <td key={j}>{String(val)}</td>)}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
-      )}
+        
+        <div style={{ 
+            flexGrow: 1, 
+            overflowY: 'auto', 
+            padding: '24px 0', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '24px',
+            marginBottom: '80px'
+          }}
+        >
+          {messages.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--ink-dim)', marginTop: '80px' }}>
+              <h2 style={{ fontSize: '24px', marginBottom: '8px' }}>How can I help you today?</h2>
+              <p>Ask me about production lots, shift performance, or QC metrics.</p>
+            </div>
+          ) : (
+            messages.map(msg => (
+              <div key={msg.id} style={{
+                display: 'flex',
+                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'
+              }}>
+                <div style={{
+                  maxWidth: '85%',
+                  padding: '16px 20px',
+                  borderRadius: '16px',
+                  backgroundColor: msg.role === 'user' ? 'var(--blue)' : 'var(--surface-raised)',
+                  color: msg.role === 'user' ? '#fff' : 'var(--ink)',
+                  boxShadow: msg.role === 'user' ? 'none' : '0 2px 8px rgba(0,0,0,0.05)',
+                  border: msg.role === 'user' ? 'none' : '1px solid var(--border)'
+                }}>
+                  <div style={{ fontFamily: 'var(--font-sans, inherit)', fontSize: '1.05rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                    {msg.text.split('**').map((part, i) => i % 2 === 1 ? <strong key={i}>{part}</strong> : part)}
+                  </div>
+                  
+                  {msg.data && msg.data.length > 0 && (
+                    <div className="d1-table-wrapper" style={{ marginTop: "16px", borderRadius: "8px", overflow: "hidden" }}>
+                      <table className="d1-table" style={{ fontSize: '13px', margin: 0, backgroundColor: 'var(--surface)' }}>
+                        <thead style={{ backgroundColor: 'var(--surface-sunken)' }}>
+                          <tr>
+                            {Object.keys(msg.data[0]).map(k => <th key={k}>{k.replace(/_/g, " ")}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {msg.data.map((row: any, i: number) => (
+                            <tr key={i}>
+                              {Object.values(row).map((val: any, j: number) => <td key={j}>{String(val)}</td>)}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {msg.ms && <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '8px', textAlign: 'right' }}>{msg.ms}ms</div>}
+                </div>
+              </div>
+            ))
+          )}
+          {loading && (
+             <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+               <div style={{
+                 padding: '16px 20px',
+                 borderRadius: '16px',
+                 backgroundColor: 'var(--surface-raised)',
+                 color: 'var(--ink-dim)',
+                 border: '1px solid var(--border)'
+               }}>
+                 Thinking...
+               </div>
+             </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div style={{ 
+            position: 'absolute', 
+            bottom: 0, left: 0, right: 0, 
+            padding: '16px 0',
+            background: 'var(--surface)',
+            borderTop: '1px solid var(--border)',
+            zIndex: 10
+          }}>
+          <form onSubmit={submitQuery} style={{ display: "flex", gap: "12px", maxWidth: "800px", margin: "0 auto" }}>
+            <input 
+              className="d1-input" 
+              style={{ 
+                flex: 1, 
+                padding: '16px 24px', 
+                borderRadius: '24px', 
+                fontSize: '15px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+              }}
+              value={query} 
+              onChange={(e) => setQuery(e.target.value)} 
+              placeholder="Message TraceLink AI..." 
+              autoFocus
+              disabled={loading}
+            />
+            <button 
+              className="d1-btn blue" 
+              type="submit" 
+              disabled={loading || !query.trim()}
+              style={{ borderRadius: '24px', padding: '0 24px', fontWeight: 'bold' }}
+            >
+              Send
+            </button>
+          </form>
+        </div>
+      </div>
     </DashboardShell>
   );
 }
@@ -1532,6 +1839,7 @@ export function AppRoutes() {
       <Route path="app" element={<RoleRoute allowed={allRoles}><DashIndex /></RoleRoute>} />
       <Route path="app/dashboard" element={<RoleRoute allowed={allRoles}><DashboardScreen /></RoleRoute>} />
       <Route path="app/account" element={<RoleRoute allowed={allRoles}><AccountScreen /></RoleRoute>} />
+      <Route path="app/help" element={<RoleRoute allowed={allRoles}><HelpScreen /></RoleRoute>} />
       <Route path="app/ai" element={<RoleRoute allowed={allRoles}><AiScreen /></RoleRoute>} />
       
       <Route path="app/trace" element={<RoleRoute allowed={opRoles}><TraceScreen /></RoleRoute>} />

@@ -61,11 +61,11 @@ def validate_csv_content(content: str, file_type: str) -> tuple[list[dict], list
         for col in [c for c in row if any(k in c.lower() for k in ["quantity", "rate", "impact", "time"])]:
             val = (row.get(col) or "").strip()
             if val:
+                cleaned = val.replace("₹", "").replace(",", "").replace("\u20b9", "").strip()
                 try:
-                    float(val)
+                    float(cleaned)
                 except ValueError:
                     row_errors.append({"row": idx, "field": col, "error": f"Non-numeric value: '{val}'"})
-
         if row_errors:
             errors.extend(row_errors)
         else:

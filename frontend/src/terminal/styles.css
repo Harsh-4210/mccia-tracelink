@@ -635,6 +635,35 @@
   }
 }
 
+/* ═══════════════════ ANIMATIONS & MAP ═══════════════════ */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dash-flow {
+  to { stroke-dashoffset: -10; }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+}
+
+.dash-flow {
+  animation: dash-flow 0.5s linear infinite;
+}
+
+.pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+.trace-node:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+}
+
 /* ═══════════════════ RESPONSIVE ═══════════════════ */
 @media (max-width: 768px) {
   .d1-side { display: none; }
