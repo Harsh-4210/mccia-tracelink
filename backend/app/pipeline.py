@@ -259,7 +259,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     ''')
 
 
-def load_all(conn: sqlite3.Connection) -> dict[str, Any]:
+def load_all(conn: sqlite3.Connection, user_id: str = "") -> dict[str, Any]:
     """Load the bundled CSV dataset used for demos, tests, and fresh local DBs."""
     file_order = [
         ("supplier", "supplier"),
@@ -286,7 +286,7 @@ def load_all(conn: sqlite3.Connection) -> dict[str, Any]:
         if not path.exists():
             continue
         rows = read_csv(path)
-        result = process_domain_import(conn, file_type, rows)
+        result = process_domain_import(conn, file_type, rows, user_id=user_id)
         if file_type == "production":
             stats["missing_batch_ids_inferred"] = result.get("total_missing", 0)
 
