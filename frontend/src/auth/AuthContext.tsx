@@ -12,6 +12,7 @@ import { auth } from "../firebase";
 
 type User = {
   uid: string;
+  user_id: string;
   email: string | null;
   displayName: string | null;
 };
@@ -70,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await res.json();
         setUser({
           uid: fbUser.uid,
+          user_id: data.user_id || fbUser.uid,
           email: fbUser.email,
           displayName: fbUser.displayName || data.full_name,
         });
@@ -77,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Backend sync failed but Firebase auth succeeded - set basic user
         setUser({
           uid: fbUser.uid,
+          user_id: fbUser.uid,
           email: fbUser.email,
           displayName: fbUser.displayName,
         });
@@ -85,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Network error — still let user in with basic info
       setUser({
         uid: fbUser.uid,
+        user_id: fbUser.uid,
         email: fbUser.email,
         displayName: fbUser.displayName,
       });

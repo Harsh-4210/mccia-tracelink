@@ -38,6 +38,9 @@ export type TraceResult = {
   dispatch: Record<string, any>;
   batches: TraceBatch[];
   incomplete_warnings?: string[];
+  warnings?: string[];
+  anomalies: string[];
+  status?: "complete" | "partial";
 };
 
 export type AlertResult = {
@@ -85,6 +88,8 @@ export type DashboardMetrics = {
   recent_imports: Record<string, any>[];
   open_corrective_actions: number;
   shift_metrics: { shift: string; total_inspections: number; fail_count: number; avg_defect_rate: number }[];
+  complaints_by_oem?: { oem_id: string; count: number }[];
+  total_financial_impact?: number;
 };
 
 // ── Trace ────────────────────────────────────────────────────
