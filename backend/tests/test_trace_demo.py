@@ -4,7 +4,7 @@ from app.auth import get_current_user, require_operator_or_above
 from app.db import connect
 from app.linking import normalize_defect_type, split_batches
 from app.main import app
-from app.pipeline import ensure_users_table, rebuild_database, seed_default_admin
+from app.pipeline import ensure_users_table, load_all, rebuild_database
 
 
 TEST_ADMIN = {
@@ -21,7 +21,22 @@ def client():
     conn = connect()
     try:
         ensure_users_table(conn)
-        seed_default_admin(conn)
+        conn.execute(
+            """
+            INSERT INTO users (user_id, email, password_hash, full_name, role, is_active)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                TEST_ADMIN["user_id"],
+                TEST_ADMIN["email"],
+                "test-only",
+                TEST_ADMIN["full_name"],
+                TEST_ADMIN["role"],
+                TEST_ADMIN["is_active"],
+            ),
+        )
+        load_all(conn, user_id=TEST_ADMIN["user_id"])
+        conn.commit()
     finally:
         conn.close()
     app.dependency_overrides[get_current_user] = lambda: TEST_ADMIN

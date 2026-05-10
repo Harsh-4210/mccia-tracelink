@@ -159,7 +159,7 @@ async def lot_alert(
     offset: int = Query(0, ge=0),
     user: dict = Depends(get_current_user),
 ):
-    return _build_lot_alert(lot_number, limit=limit, offset=offset)
+    return _build_lot_alert(lot_number, user.get("user_id"), limit=limit, offset=offset)
 
 
 @router.get("/lots/{lot_number}/export")
@@ -169,7 +169,7 @@ async def export_lot_alert(
     user: dict = Depends(get_current_user),
 ):
     # Export ALL rows (no pagination)
-    result = _build_lot_alert(lot_number, limit=999999, offset=0)
+    result = _build_lot_alert(lot_number, user.get("user_id"), limit=999999, offset=0)
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([

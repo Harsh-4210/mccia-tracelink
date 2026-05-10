@@ -111,6 +111,11 @@ async def get_trace(order_id: str, user: dict = Depends(get_current_user)):
     return _build_trace(order_id, user.get("user_id"))
 
 
+@router.get("/dispatch/{order_id}")
+async def get_dispatch_trace(order_id: str, user: dict = Depends(get_current_user)):
+    return _build_trace(order_id, user.get("user_id"))
+
+
 import datetime
 
 @router.get("/{order_id}/export")
