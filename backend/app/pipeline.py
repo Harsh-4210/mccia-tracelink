@@ -297,6 +297,8 @@ def load_all(conn: sqlite3.Connection, user_id: str = "") -> dict[str, Any]:
         if file_type == "production":
             stats["missing_batch_ids_inferred"] = result.get("total_missing", 0)
 
+    ensure_demo_anchor_records(conn, user_id=user_id)
+
     stats["suppliers"] = conn.execute("SELECT COUNT(*) FROM suppliers").fetchone()[0]
     stats["raw_materials"] = conn.execute("SELECT COUNT(*) FROM raw_materials").fetchone()[0]
     stats["production_batches"] = conn.execute("SELECT COUNT(*) FROM production_batches").fetchone()[0]
@@ -305,6 +307,101 @@ def load_all(conn: sqlite3.Connection, user_id: str = "") -> dict[str, Any]:
     stats["dispatch_batch_links"] = conn.execute("SELECT COUNT(*) FROM dispatch_batches").fetchone()[0]
     stats["complaints"] = conn.execute("SELECT COUNT(*) FROM complaints").fetchone()[0]
     return stats
+
+
+def ensure_demo_anchor_records(conn: sqlite3.Connection, user_id: str = "") -> None:
+    """Keep the public demo trace stable across generated fixture refreshes."""
+    conn.execute(
+        """INSERT OR REPLACE INTO suppliers
+        (supplier_id, supplier_name, material_supplied, lead_time_days, approved_status, user_id)
+        VALUES (?, ?, ?, ?, ?, ?)""",
+        ("S03", "Sundaram Clayton", "Adhesive bonding agent", 7, "Approved", user_id),
+    )
+    conn.execute(
+        """INSERT INTO raw_materials
+        (receipt_date, supplier_id, material_type, lot_number, quantity_kg, quality_grade, inspector_name, user_id)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (
+            SELECT 1 FROM raw_materials
+            WHERE lot_number = ? AND supplier_id = ? AND user_id = ?
+        )""",
+        (
+            "2023-09-15",
+            "S03",
+            "Adhesive bonding agent",
+            "LOT-2023-114",
+            600.0,
+            "B",
+            "Rajesh Patil",
+            user_id,
+            "LOT-2023-114",
+            "S03",
+            user_id,
+        ),
+    )
+    conn.execute(
+        """INSERT INTO production_batches
+        (batch_id, input_lot_ref, units_produced, production_date, machine_id,
+         operator_id, shift, inferred_batch_id, inference_confidence, inference_reason, user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "BATCH-2023-0500",
+            "LOT-2023-114",
+            500,
+            "2024-03-10",
+            "MC-04",
+            "OP-101",
+            "C",
+            0,
+            1.0,
+            None,
+            user_id,
+        ),
+    )
+    conn.execute(
+        """INSERT OR REPLACE INTO qc_inspections
+        (batch_id, inspection_date, inspector_id, pass_fail, defect_type_raw,
+         defect_rate_pct, defect_type_normalized, user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "BATCH-2023-0500",
+            "2024-03-12",
+            "QC-017",
+            "FAIL",
+            "surface delamination",
+            5.74,
+            normalize_defect_type("surface delamination"),
+            user_id,
+        ),
+    )
+
+    anchor_orders = [
+        ("D-1847", "2024-03-14", "OEM-TATA", "Brake Pad Type A", 180, "MH12AB1847"),
+        ("D-1921", "2024-03-18", "OEM-TATA", "Brake Pad Type A", 160, "MH12AB1921"),
+        ("D-2044", "2024-03-23", "OEM-HONDA", "Brake Pad Type A", 140, "MH12AB2044"),
+        ("D-2102", "2024-03-26", "OEM-TVS", "Brake Pad Type A", 120, "MH12AB2102"),
+        ("D-2367", "2024-04-02", "OEM-BAJAJ", "Brake Pad Type A", 100, "MH12AB2367"),
+    ]
+    for order_id, dispatch_date, customer_id, product_type, quantity, vehicle_number in anchor_orders:
+        conn.execute(
+            """INSERT OR REPLACE INTO dispatch_orders
+            (order_id, dispatch_date, customer_id, product_type, quantity, batch_ref, vehicle_number, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                order_id,
+                dispatch_date,
+                customer_id,
+                product_type,
+                quantity,
+                "BATCH-2023-0500",
+                vehicle_number,
+                user_id,
+            ),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO dispatch_batches (order_id, batch_id, user_id) VALUES (?, ?, ?)",
+            (order_id, "BATCH-2023-0500", user_id),
+        )
 
 
 def create_indexes(conn: sqlite3.Connection) -> None:
