@@ -16,7 +16,7 @@ import { t as autoTranslate, type TLang } from "./transliterate";
 
 export type Lang = TLang;
 export const LANGS: Lang[] = ["en", "hi", "mr"];
-export const LANG_LABELS: Record<Lang, string> = { en: "EN", hi: "HI", mr: "MR" };
+export const LANG_LABELS: Record<Lang, string> = { en: "EN", hi: "हि", mr: "म" };
 
 // ── Context ────────────────────────────────────────
 type I18nContextType = {

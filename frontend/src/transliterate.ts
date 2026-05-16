@@ -700,6 +700,41 @@ const DICT: Record<string, { hi: string; mr: string }> = {
   "trace.tracing": { hi: "ट्रेस हो रहा है...", mr: "ट्रेस होत आहे..." },
 };
 
+const EN_ALIASES: Record<string, string> = {
+  "nav.section.ops": "Operations",
+  "nav.section.data": "Data",
+  "nav.section.system": "System",
+  "nav.dashboard": "Dashboard",
+  "nav.trace": "Trace",
+  "nav.alert": "Alert",
+  "nav.operator": "Operator",
+  "nav.ai": "AI Assistant",
+  "nav.import": "Import",
+  "nav.review": "Review",
+  "nav.compliance": "Compliance",
+  "nav.audit": "Data Audit",
+  "nav.account": "Account",
+  "nav.logout": "Logout",
+  "nav.guide": "Help Guide",
+  "shell.search": "Search orders, lots, machines...",
+  "shell.signout": "Sign Out",
+  "brand.ver": "Precision Industrial v3",
+  "guide.heading": "Welcome to TraceLink",
+  "guide.enter": "Enter the System",
+  "guide.items.0": "Enter an order ID to trace the full chain: batch, QC, raw material, supplier.",
+  "guide.items.1": "Identify every dispatch order affected by a suspect raw material lot.",
+  "guide.items.2": "Log production batches from the shop floor. Works fully offline.",
+  "guide.items.3": "Factory-wide metrics: pass rates, shift intelligence, top failing machines.",
+  "guide.items.4": "Bulk upload CSV files for production, QC, dispatch, suppliers, and complaints.",
+  "guide.items.5": "Approve or reject automatically inferred trace links.",
+  "guide.items.6": "Track corrective actions (CAPA/8D) for quality incidents.",
+  "guide.items.7": "Audit logs, pipeline health, and imputation diagnostics.",
+  "notif.title": "Notifications",
+  "notif.clear": "Clear",
+  "notif.empty": "No notifications yet. Trace or alert events will appear here.",
+  "notif.total": "{total} total · {unread} unread",
+};
+
 /* ═══════════════════════════════════════════════════════════
    TRANSLATION ENGINE
    ═══════════════════════════════════════════════════════════ */
@@ -715,7 +750,7 @@ const DICT: Record<string, { hi: string; mr: string }> = {
  * Complex sentences should be added to DICT as full phrases.
  */
 export function translate(text: string, lang: TLang): string {
-  if (lang === "en") return text;
+  if (lang === "en") return EN_ALIASES[text] ?? text;
 
   // Try exact match first
   const entry = DICT[text];

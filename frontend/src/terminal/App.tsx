@@ -213,6 +213,35 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
   return (
     <div className="tl-app">
       <div className="tl-bg-grid" />
+      <header className="tl-topbar">
+        <div className="tl-topbar-left">
+          <div className="tl-brand">
+            <div className="tl-brand-mark">{Ic.bolt}</div>
+            <div className="tl-brand-name">TraceLink</div>
+          </div>
+          <div className="tl-search">
+            {Ic.search}
+            <input type="text" placeholder={t("shell.search")} />
+          </div>
+        </div>
+        <div className="tl-topbar-actions">
+          <div className="tl-lang-group" aria-label="Language">
+            {LANGS.map(l => (
+              <button key={l} className={`tl-lang-btn${lang === l ? " active" : ""}`} onClick={() => setLang(l)}>
+                {LANG_LABELS[l]}
+              </button>
+            ))}
+          </div>
+          <button className="tl-icon-btn" onClick={() => setShowGuide(true)} title="Help Guide">?</button>
+          <div style={{ position: "relative" }}>
+            <button className={`tl-icon-btn${notifOpen ? " active" : ""}`} onClick={() => { setNotifOpen(o => !o); if (!notifOpen) notifs.markRead(); }}>
+              {Ic.bell}
+              {notifs.unread > 0 && <span className="tl-notif-dot">{notifs.unread > 9 ? "9+" : notifs.unread}</span>}
+            </button>
+            {notifOpen && <NotifPanel notifs={notifs} onClose={() => setNotifOpen(false)} />}
+          </div>
+        </div>
+      </header>
       <aside className={`tl-sidebar${sidebar.collapsed ? " collapsed" : ""}`}>
         <div className="tl-sidebar-header">
           <button className="tl-sidebar-toggle" onClick={sidebar.toggle} title="Toggle sidebar">
@@ -250,38 +279,6 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
       )}
 
       <main className="tl-main">
-        <header className="tl-topbar">
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-              <div style={{ width: 32, height: 32, background: "var(--accent)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#FFFFFF", flexShrink: 0 }}>
-                {Ic.bolt}
-              </div>
-              <div style={{ fontFamily: "var(--font-headline)", fontSize: 16, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", lineHeight: 1.2, color: "var(--text-primary)" }}>TraceLink</div>
-            </div>
-            <div className="tl-search">
-              {Ic.search}
-              <input type="text" placeholder={t("shell.search")} />
-            </div>
-          </div>
-          <div className="tl-topbar-actions">
-            <div className="tl-lang-group">
-              {LANGS.map((l, i) => (
-                <span key={l} style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                  {i > 0 && <span className="tl-lang-sep" />}
-                  <button className={`tl-lang-btn${lang === l ? " active" : ""}`} onClick={() => setLang(l)}>{LANG_LABELS[l]}</button>
-                </span>
-              ))}
-            </div>
-            <button className="tl-icon-btn" onClick={() => setShowGuide(true)} title="Help Guide">?</button>
-            <div style={{ position: "relative" }}>
-              <button className={`tl-icon-btn${notifOpen ? " active" : ""}`} onClick={() => { setNotifOpen(o => !o); if (!notifOpen) notifs.markRead(); }}>
-                {Ic.bell}
-                {notifs.unread > 0 && <span className="tl-notif-dot">{notifs.unread > 9 ? "9+" : notifs.unread}</span>}
-              </button>
-              {notifOpen && <NotifPanel notifs={notifs} onClose={() => setNotifOpen(false)} />}
-            </div>
-          </div>
-        </header>
         <div className="tl-content">{children}</div>
       </main>
 
