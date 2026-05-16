@@ -79,6 +79,19 @@ async def dashboard_metrics(user: dict = Depends(get_current_user)):
         # Open complaints
         open_complaints = conn.execute("SELECT COUNT(*) as cnt FROM complaints WHERE user_id = ?", (user_id,)).fetchone()["cnt"]
 
+        # Financial exposure from all complaint records with a captured impact value
+        financial_exposure = conn.execute(
+            "SELECT COALESCE(SUM(COALESCE(financial_impact_inr, 0)), 0) as total FROM complaints WHERE user_id = ?", (user_id,)
+        ).fetchone()["total"]
+
+        recent_complaints = [dict(r) for r in conn.execute("""
+            SELECT complaint_id, oem_id, complaint_date, defect_description, root_cause_identified, financial_impact_inr
+            FROM complaints
+            WHERE user_id = ?
+            ORDER BY complaint_date DESC, complaint_id DESC
+            LIMIT 25
+        """, (user_id,)).fetchall()]
+
         # Pending operator entries (not approved)
         pending_entries = conn.execute(
             "SELECT COUNT(*) as cnt FROM operator_entries WHERE supervisor_approved = 0 AND user_id = ?", (user_id,)
@@ -109,6 +122,8 @@ async def dashboard_metrics(user: dict = Depends(get_current_user)):
             "top_failing_machines": top_machines,
             "supplier_scorecard": supplier_scorecard,
             "open_complaints": open_complaints,
+            "financial_exposure": financial_exposure,
+            "recent_complaints": recent_complaints,
             "pending_operator_entries": pending_entries,
             "unresolved_links": unresolved,
             "recent_imports": recent_imports,

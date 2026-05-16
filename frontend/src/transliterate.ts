@@ -733,6 +733,121 @@ const EN_ALIASES: Record<string, string> = {
   "notif.clear": "Clear",
   "notif.empty": "No notifications yet. Trace or alert events will appear here.",
   "notif.total": "{total} total · {unread} unread",
+
+  // ── Dashboard metrics ──
+  "dash.prod_batches": "Production Batches",
+  "dash.qc_pass": "QC Pass Rate",
+  "dash.open_complaints": "Open Complaints",
+  "dash.unresolved_links": "Unresolved Links",
+  "dash.open_capas": "Open CAPAs",
+  "dash.pending": "Pending Entries",
+  "dash.machine_col": "Machine",
+  "dash.supplier_col": "Supplier",
+  "dash.complaints": "Complaints",
+  "dash.complaints_col": "Complaints",
+
+  // ── Trace ──
+  "trace.ordering": "Enter dispatch order ID (e.g. D-1847)",
+  "trace.map_no_link": "No linked batches to visualise.",
+
+  // ── Alert ──
+  "alert.lot_placeholder": "Enter lot number (e.g. LOT-2023-114)",
+  "alert.escaped_shipments": "Escaped Shipments",
+  "alert.failed_batches": "Failed Batches",
+  "alert.financial": "Financial Exposure",
+  "alert.post_qc": "Post-QC Dispatches",
+  "alert.quarantine": "Quarantine Required",
+
+  // ── AI ──
+  "ai.placeholder": "Ask about lots, machines, shifts, failures...",
+  "ai.suggest.0": "Which shift is worst?",
+  "ai.suggest.1": "Show failed batches",
+  "ai.suggest.2": "Supplier scorecard",
+  "ai.suggest.3": "System overview",
+  "ai.heading": "AI Assistant",
+  "ai.empty_title": "TraceLink Intelligence",
+  "ai.empty_desc": "Ask about lots, machines, shifts, QC failures, or dispatch history.",
+  "ai.error": "Error: {msg}. Please try again.",
+  "ai.clear": "Clear Chat",
+
+  // ── Operator ──
+  "lot": "Lot",
+  "shift": "Shift",
+  "machine_id": "Machine ID",
+  "operator_id": "Operator ID",
+  "raw_lot": "Raw Lot",
+  "units_produced": "Units Produced",
+  "qc_notes": "QC Notes",
+  "date": "Date",
+  "order_id": "Order ID",
+  "op.fill_required": "Please fill all required fields.",
+  "op.saved": "Entry saved.",
+  "op.saved_offline": "Saved offline — will sync when connected.",
+  "op.save_failed": "Save failed.",
+
+  // ── Import ──
+  "import.select_file": "Select file",
+  "import.report_total": "Total Rows",
+  "import.report_valid": "Valid Rows",
+  "import.report_errors": "Errors",
+
+  // ── Compliance ──
+  "triggered_by": "Triggered By",
+  "assigned_to": "Assigned To",
+  "root_cause": "Root Cause",
+  "due_date": "Due Date",
+
+  // ── Alert detail ──
+  "alert.crumb": "Quality Response",
+  "alert.heading": "Lot Impact Alert",
+  "alert.lot_analysis": "Lot Fanout Analysis",
+  "alert.input": "Lot Number (e.g. LOT-0001)",
+  "alert.button": "Search",
+  "alert.panel_key": "[ Fanout ]",
+  "alert.affected_orders": "Affected Dispatch Orders",
+  "alert.orders_count": "{count} orders · {ms}ms",
+  "alert.batch_col": "Batch",
+  "alert.order_col": "Order",
+  "alert.customer_col": "Customer",
+  "alert.date_col": "Date",
+  "alert.qc_col": "QC",
+  "alert.export": "Export CSV",
+  "alert.export_ready": "Export Ready",
+  "alert.escaped": "{count} escaped shipments — failed batches dispatched before QC inspection. Immediate recall action required.",
+
+  // ── Login ──
+  "login.card.sub.signin": "Sign in to your workspace",
+  "login.card.sub.register": "Create a new workspace",
+  "login.mode.signin": "Sign In",
+  "login.mode.register": "Register",
+  "login.mode.create": "Create Account",
+  "login.mode.system": "System Access",
+  "login.toggle.noaccount": "Don't have an account?",
+  "login.toggle.hasaccount": "Already have an account?",
+  "login.stat.coverage": "Full Coverage",
+  "login.stat.engine": "Trace Engine",
+  "login.stat.time": "Real-time",
+
+  // ── Landing ──
+  "landing.feature.0.title": "End-to-End Traceability",
+  "landing.feature.0.desc": "Track from raw material to customer delivery.",
+  "landing.feature.1.title": "QC Intelligence",
+  "landing.feature.1.desc": "Shift analysis, defect trends, machine rankings.",
+  "landing.feature.2.title": "Lot Impact Alerts",
+  "landing.feature.2.desc": "Instantly find every order affected by a suspect lot.",
+  "landing.feature.3.title": "Compliance & CAPA",
+  "landing.feature.3.desc": "Track corrective actions with full audit trail.",
+
+  // ── Account ──
+  "account.heading": "Account",
+  "account.identity_title": "Identity & Access",
+  "account.theme_label": "Theme",
+  "account.usage_title": "System Usage",
+  "account.usage_tag": "Current Cycle",
+  "account.usage_rows": "Ingested Rows",
+  "account.usage_storage": "Storage Usage",
+  "account.usage_api": "API Calls",
+  "account.usage_footer": "Enterprise plan. Contact account manager to increase limits.",
 };
 
 /* ═══════════════════════════════════════════════════════════

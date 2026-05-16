@@ -83,6 +83,8 @@ export type DashboardMetrics = {
   top_failing_machines: Record<string, any>[];
   supplier_scorecard: Record<string, any>[];
   open_complaints: number;
+  financial_exposure: number;
+  recent_complaints?: Record<string, any>[];
   pending_operator_entries: number;
   unresolved_links: number;
   recent_imports: Record<string, any>[];
@@ -160,6 +162,11 @@ export async function fetchDashboard(): Promise<DashboardMetrics> {
   const res = await authFetch("/api/v1/dashboard/metrics");
   if (!res.ok) throw new Error("Failed to fetch dashboard");
   return res.json();
+}
+
+export async function fetchComplaints(): Promise<{ complaints: Record<string, any>[] }> {
+  const data = await fetchDashboard();
+  return { complaints: data.recent_complaints || [] };
 }
 
 // ── Imports ──────────────────────────────────────────────────

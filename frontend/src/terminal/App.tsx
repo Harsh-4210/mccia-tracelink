@@ -9,7 +9,7 @@ import { Link, Navigate, NavLink, Route, Routes, useNavigate, useSearchParams } 
 import {
   approveLink, createCorrectiveAction, downloadAlertExport, downloadTraceExport,
   fetchCorrectiveActions, fetchAlert, fetchDashboard, fetchImports, uploadImport,
-  uploadImportWithProgress, fetchDataUsage,
+  uploadImportWithProgress, fetchDataUsage, fetchComplaints,
   deleteImport, fetchTrace, fetchUnresolvedLinks, postBatch, rejectLink,
   type AlertResult, type DashboardMetrics, type TraceResult,
   fetchUsers, fetchAiQuery, fetchAuditEvents, fetchPipelineAudit,
@@ -294,14 +294,20 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
 /* ══════════════════════════════════════════════
    METRIC CARD
 ══════════════════════════════════════════════ */
-function Metric({ label, value, sub, color, icon }: { label: string; value: string | number; sub?: string; color?: string; icon?: ReactNode }) {
-  return (
-    <div className="tl-metric anim-up" style={{ "--metric-color": color || "var(--text-secondary)" } as any}>
+function Metric({ label, value, sub, color, icon, to }: { label: string; value: string | number; sub?: string; color?: string; icon?: ReactNode; to?: string }) {
+  const content = (
+    <>
       <div className="tl-metric-label">{label}</div>
       <div className="tl-metric-value">{value}</div>
       {sub && <div className="tl-metric-sub">{sub}</div>}
       {icon && <div className="tl-metric-icon" style={{ color: color || "var(--text-tertiary)" }}>{icon}</div>}
-    </div>
+    </>
+  );
+
+  return to ? (
+    <Link to={to} className="tl-metric tl-metric-link anim-up" style={{ "--metric-color": color || "var(--text-secondary)" } as any}>{content}</Link>
+  ) : (
+    <div className="tl-metric anim-up" style={{ "--metric-color": color || "var(--text-secondary)" } as any}>{content}</div>
   );
 }
 
@@ -520,12 +526,13 @@ function DashboardScreen() {
         <>
           {/* Metric Strip */}
           <div className="tl-metrics stagger">
-            <Metric label={t("dash.prod_batches")} value={metrics.batch_count.toLocaleString()} icon={Ic.operator} />
-            <Metric label={t("dash.qc_pass")} value={`${metrics.pass_rate}%`} color="var(--green)" icon={Ic.check} />
-            <Metric label={t("dash.open_complaints")} value={metrics.open_complaints} color={metrics.open_complaints > 0 ? "var(--red)" : "var(--green)"} icon={Ic.alert} />
-            <Metric label={t("dash.unresolved_links")} value={metrics.unresolved_links} color={metrics.unresolved_links > 0 ? "var(--amber)" : "var(--green)"} icon={Ic.review} />
-            <Metric label={t("dash.open_capas")} value={metrics.open_corrective_actions} color="var(--purple)" icon={Ic.compliance} />
-            <Metric label={t("dash.pending")} value={metrics.pending_operator_entries} icon={Ic.operator} />
+            <Metric label={t("dash.prod_batches")} value={metrics.batch_count.toLocaleString()} sub="All-time" icon={Ic.operator} />
+            <Metric label={t("dash.qc_pass")} value={`${metrics.pass_rate}%`} sub="All-time" color="var(--green)" icon={Ic.check} />
+            <Metric label={t("dash.open_complaints")} value={metrics.open_complaints} sub="View all" color={metrics.open_complaints > 0 ? "var(--red)" : "var(--green)"} icon={Ic.alert} to="/app/complaints" />
+            <Metric label="Financial Exposure" value={`₹ ${Math.round(metrics.financial_exposure || 0).toLocaleString()}`} sub="From complaints" color="var(--amber)" icon={Ic.alert} to="/app/complaints" />
+            <Metric label={t("dash.unresolved_links")} value={metrics.unresolved_links} sub="Needs review" color={metrics.unresolved_links > 0 ? "var(--amber)" : "var(--green)"} icon={Ic.review} to="/app/review" />
+            <Metric label={t("dash.open_capas")} value={metrics.open_corrective_actions} sub="Open" color="var(--purple)" icon={Ic.compliance} to="/app/compliance" />
+            <Metric label={t("dash.pending")} value={metrics.pending_operator_entries} sub="Awaiting approval" icon={Ic.operator} />
           </div>
 
           {/* Shift Intelligence + Defect Trend */}
@@ -533,7 +540,7 @@ function DashboardScreen() {
             <div className="tl-card anim-up">
               <div className="tl-card-header">
                 <div className="tl-card-title">Shift Intelligence</div>
-                <div className="tl-card-tag">QC Fail Analysis</div>
+                <div className="tl-card-tag">QC Fails by Shift</div>
               </div>
               <div className="tl-shift-grid">
                 {metrics.shift_metrics?.filter(s => s.shift && s.shift.length <= 3).map(s => {
@@ -565,7 +572,7 @@ function DashboardScreen() {
               <div style={{ display: "flex", alignItems: "flex-end", gap: 24 }}>
                 <Ring pct={metrics.pass_rate} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>Failure count per inspection date</div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>Failures per inspection date</div>
                   <Spark data={trendData} />
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-tertiary)", fontFamily: "var(--font-label)", marginTop: 4 }}>
                     <span>Oldest</span><span>Recent</span>
@@ -600,7 +607,7 @@ function DashboardScreen() {
             <div className="tl-card anim-up">
               <div className="tl-card-header">
                 <div className="tl-card-title">Top Failing Machines</div>
-                <div className="tl-card-tag">By failure count</div>
+                <div className="tl-card-tag">QC Fails</div>
               </div>
               <div className="tl-table-wrap">
                 <table className="tl-table">
@@ -668,6 +675,57 @@ function DashboardScreen() {
           )}
         </>
       )}
+    </Shell>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   COMPLAINTS SCREEN
+══════════════════════════════════════════════ */
+function ComplaintsScreen() {
+  const [rows, setRows] = useState<any[]>([]);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    fetchComplaints().then(d => setRows(d.complaints || [])).catch(e => setMsg(e.message));
+  }, []);
+
+  const totalExposure = rows.reduce((sum, r) => sum + (Number(r.financial_impact_inr) || 0), 0);
+
+  return (
+    <Shell page="COMPLAINTS">
+      <div className="tl-page-header anim-up">
+        <div>
+          <div className="tl-crumb">Customer Quality</div>
+          <div className="tl-page-title">Open Complaints</div>
+        </div>
+        <div className="tl-statusline">
+          <span style={{ fontFamily: "var(--font-label)", fontSize: 11 }}>{rows.length} shown · ₹ {Math.round(totalExposure).toLocaleString()} exposure</span>
+        </div>
+      </div>
+
+      {msg && <div className="tl-alert tl-alert-danger anim-up">{Ic.alert} {msg}</div>}
+
+      <div className="tl-card anim-up">
+        <div className="tl-table-wrap">
+          <table className="tl-table">
+            <thead><tr><th>Complaint</th><th>OEM</th><th>Date</th><th>Defect</th><th>Root Cause</th><th>Exposure</th></tr></thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.complaint_id}>
+                  <td style={{ fontFamily: "var(--font-label)" }}>{r.complaint_id}</td>
+                  <td>{r.oem_id || "-"}</td>
+                  <td style={{ fontFamily: "var(--font-label)" }}>{r.complaint_date || "-"}</td>
+                  <td>{r.defect_description || "-"}</td>
+                  <td>{r.root_cause_identified || "-"}</td>
+                  <td style={{ color: "var(--amber)", fontFamily: "var(--font-label)", fontWeight: 600 }}>₹ {(Number(r.financial_impact_inr) || 0).toLocaleString()}</td>
+                </tr>
+              ))}
+              {!rows.length && <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-tertiary)", padding: 28 }}>No complaint records imported yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </Shell>
   );
 }
@@ -1315,6 +1373,10 @@ function ReviewScreen() {
 
       {msg && <div className="tl-alert tl-alert-info anim-up">{msg}</div>}
 
+      <div className="tl-alert tl-alert-info anim-up" style={{ marginBottom: 6 }}>
+        {Ic.review} These are <strong>inferred</strong> production-to-lot links. <strong>Approve</strong> to trust them in traces, or <strong>Reject</strong> to exclude.
+      </div>
+
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {links.map((l, i) => (
           <div key={l.production_id} className="tl-review-item anim-up" style={{ animationDelay: `${i * 40}ms` }}>
@@ -1906,6 +1968,7 @@ export function AppRoutes() {
       <Route path="app/operator"   element={<Guard><OperatorScreen /></Guard>} />
       <Route path="app/import"     element={<Guard><ImportScreen /></Guard>} />
       <Route path="app/review"     element={<Guard><ReviewScreen /></Guard>} />
+      <Route path="app/complaints" element={<Guard><ComplaintsScreen /></Guard>} />
       <Route path="app/compliance" element={<Guard><ComplianceScreen /></Guard>} />
       <Route path="app/ai"         element={<Guard><AiScreen /></Guard>} />
       <Route path="app/audit"      element={<Guard><AuditScreen /></Guard>} />

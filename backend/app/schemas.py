@@ -98,6 +98,8 @@ class DashboardMetrics(BaseModel):
     top_failing_machines: list[dict[str, Any]] = []
     supplier_scorecard: list[dict[str, Any]] = []
     open_complaints: int = 0
+    financial_exposure: float = 0.0
+    recent_complaints: list[dict[str, Any]] = []
     pending_operator_entries: int = 0
     unresolved_links: int = 0
     recent_imports: list[dict[str, Any]] = []

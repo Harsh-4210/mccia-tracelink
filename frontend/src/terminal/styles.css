@@ -481,6 +481,12 @@ html, body, #root {
   overflow: hidden;
   transition: border-color 0.2s, transform 0.2s var(--ease-out);
 }
+.tl-metric-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
 .tl-metric:hover { border-color: var(--border-default); transform: translateY(-1px); }
 .tl-metric-label {
   font-family: var(--font-label);
