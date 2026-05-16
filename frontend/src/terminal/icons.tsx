@@ -277,6 +277,20 @@ export const Icons = {
     </svg>
   ),
 
+  chevronLeft: (
+    <svg {...base}>
+      <polyline points="15 5 8 12 15 19" />
+    </svg>
+  ),
+
+  panelLeft: (
+    <svg {...base}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="9" y1="3" x2="9" y2="21" />
+      <polyline points="6 9 3 12 6 15" />
+    </svg>
+  ),
+
   plus: (
     <svg {...base}>
       <line x1="12" y1="5" x2="12" y2="19" />

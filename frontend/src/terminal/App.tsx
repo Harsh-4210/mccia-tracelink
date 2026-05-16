@@ -48,6 +48,14 @@ function useTheme() {
   return { theme, setTheme, toggleTheme: () => setTheme(t => t === "dark" ? "light" : "dark") };
 }
 
+function useSidebar() {
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("tl_sidebar") === "collapsed");
+  useEffect(() => {
+    localStorage.setItem("tl_sidebar", collapsed ? "collapsed" : "expanded");
+  }, [collapsed]);
+  return { collapsed, toggle: () => setCollapsed(c => !c), expand: () => setCollapsed(false) };
+}
+
 /* ══════════════════════════════════════════════
    NOTIFICATION SYSTEM
 ══════════════════════════════════════════════ */
@@ -168,6 +176,7 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
   const { user, logout } = useAuth();
   const { t, lang, setLang } = useI18n();
   const notifs = useNotifs();
+  const sidebar = useSidebar();
   const [notifOpen, setNotifOpen] = useState(false);
   const [showGuide, setShowGuide] = useState(() => !localStorage.getItem("tl_guide_v2"));
 
@@ -204,13 +213,11 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
   return (
     <div className="tl-app">
       <div className="tl-bg-grid" />
-      <aside className="tl-sidebar">
-        <div className="tl-brand">
-          <div className="tl-brand-mark">{Ic.bolt}</div>
-          <div>
-            <div className="tl-brand-name">TraceLink</div>
-            <div className="tl-brand-ver">{t("brand.ver")}</div>
-          </div>
+      <aside className={`tl-sidebar${sidebar.collapsed ? " collapsed" : ""}`}>
+        <div className="tl-sidebar-header">
+          <button className="tl-sidebar-toggle" onClick={sidebar.toggle} title="Toggle sidebar">
+            {Ic.panelLeft}
+          </button>
         </div>
         <nav className="tl-nav">
           {navGroups.map(g => (
@@ -236,11 +243,25 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
         </div>
       </aside>
 
+      {sidebar.collapsed && (
+        <button className="tl-sidebar-peek" onClick={sidebar.expand} title="Open sidebar">
+          {Ic.chevronRight}
+        </button>
+      )}
+
       <main className="tl-main">
         <header className="tl-topbar">
-          <div className="tl-search">
-            {Ic.search}
-            <input type="text" placeholder={t("shell.search")} />
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              <div style={{ width: 32, height: 32, background: "var(--accent)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#FFFFFF", flexShrink: 0 }}>
+                {Ic.bolt}
+              </div>
+              <div style={{ fontFamily: "var(--font-headline)", fontSize: 16, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", lineHeight: 1.2, color: "var(--text-primary)" }}>TraceLink</div>
+            </div>
+            <div className="tl-search">
+              {Ic.search}
+              <input type="text" placeholder={t("shell.search")} />
+            </div>
           </div>
           <div className="tl-topbar-actions">
             <div className="tl-lang-group">
