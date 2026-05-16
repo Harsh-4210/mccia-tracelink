@@ -179,6 +179,18 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
   const sidebar = useSidebar();
   const [notifOpen, setNotifOpen] = useState(false);
   const [showGuide, setShowGuide] = useState(() => !localStorage.getItem("tl_guide_v2"));
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function closeGuide() { setShowGuide(false); localStorage.setItem("tl_guide_v2", "1"); }
 
@@ -219,10 +231,9 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
             <div className="tl-brand-mark">{Ic.bolt}</div>
             <div className="tl-brand-name">TraceLink</div>
           </div>
-          <div className="tl-search">
-            {Ic.search}
-            <input type="text" placeholder={t("shell.search")} />
-          </div>
+          <button className={`tl-sidebar-toggle${sidebar.collapsed ? " collapsed" : ""}`} onClick={sidebar.toggle} title={sidebar.collapsed ? "Show sidebar" : "Hide sidebar"}>
+            {sidebar.collapsed ? Ic.panelRight : Ic.panelLeft}
+          </button>
         </div>
         <div className="tl-topbar-actions">
           <div className="tl-lang-group" aria-label="Language">
@@ -243,10 +254,10 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
         </div>
       </header>
       <aside className={`tl-sidebar${sidebar.collapsed ? " collapsed" : ""}`}>
-        <div className="tl-sidebar-header">
-          <button className="tl-sidebar-toggle" onClick={sidebar.toggle} title="Toggle sidebar">
-            {Ic.panelLeft}
-          </button>
+        <div className="tl-sidebar-search">
+          {Ic.search}
+          <input ref={searchRef} type="text" placeholder={t("shell.search")} />
+          <kbd className="tl-search-kbd">{navigator.platform.toLowerCase().includes("mac") ? "⌘K" : "Ctrl K"}</kbd>
         </div>
         <nav className="tl-nav">
           {navGroups.map(g => (
@@ -267,16 +278,9 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
               <div className="tl-user-email">{user?.email || "authenticated"}</div>
               <div className="tl-user-id">ID: {user?.uid?.substring(0, 10)}…</div>
             </div>
-            <button className="tl-icon-btn tl-btn-ghost" style={{ width: 28, height: 28, border: "none", flexShrink: 0 }} onClick={e => { e.preventDefault(); logout(); }}>{Ic.logout}</button>
           </Link>
         </div>
       </aside>
-
-      {sidebar.collapsed && (
-        <button className="tl-sidebar-peek" onClick={sidebar.expand} title="Open sidebar">
-          {Ic.chevronRight}
-        </button>
-      )}
 
       <main className="tl-main">
         <div className="tl-content">{children}</div>
