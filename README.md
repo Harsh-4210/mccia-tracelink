@@ -1,4 +1,4 @@
-<![CDATA[<div align="center">
+<div align="center">
 
 # TraceLink
 
@@ -12,7 +12,7 @@ Track raw materials → production batches → QC inspections → dispatch order
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Firebase](https://img.shields.io/badge/Firebase-Auth-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL_Mode-003B57?logo=sqlite&logoColor=white)](https://sqlite.org)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
 </div>
 
@@ -510,11 +510,71 @@ mccia-tracelink/
 
 ---
 
+## Future Roadmap
+
+| Priority | Feature | Status | Details |
+|----------|---------|--------|---------|
+| 🔴 High | **Persistent Storage (Render Paid Tier)** | Planned | Currently on Render Free Tier, data resets on redeploy. Upgrading to a Persistent Disk mount at `/data` will make the SQLite database survive redeployments. The backend already auto-detects the mount — just add the disk in Render dashboard. |
+| 🔴 High | **PostgreSQL Migration** | Planned | Replace SQLite with Render's managed PostgreSQL for true cloud-native persistence, concurrent write support, and connection pooling. Eliminates the ephemeral filesystem constraint entirely. |
+| 🟡 Medium | **Role-Based Access Control** | Planned | Re-enable role differentiation (admin, supervisor, quality, operator) with granular route-level permissions. The role guards are already wired in code as aliases. |
+| 🟡 Medium | **WebSocket Real-Time Dashboard** | Planned | Push dashboard updates via WebSocket instead of polling, for instant metric refresh across all connected clients. |
+| 🟢 Low | **Batch Export (PDF Reports)** | Planned | Generate downloadable PDF trace reports with charts, for regulatory submission and OEM audit compliance. |
+| 🟢 Low | **Multi-Language UI** | Planned | Activate the i18n module with Hindi, Marathi, and Gujarati translations for shop-floor operators. Transliteration engine is already built. |
+| 🟢 Low | **Mobile PWA** | Planned | Convert the frontend to a Progressive Web App with service worker caching for full offline capability on mobile devices. |
+
+> **Note on Current Persistence**: On Render Free Tier, the filesystem is ephemeral. Data persists within a deploy lifecycle but is wiped on new deployments or after 15 minutes of inactivity. The pipeline is optimized for fast re-ingestion (40k+ rows in seconds), so re-uploading CSVs after a redeploy takes minimal time. For production use, a Render Persistent Disk ($0.25/GB/month) or PostgreSQL migration is recommended.
+
+---
+
+## Authors
+
+<table>
+  <tr>
+    <td align="center"><strong>Harsh Jain</strong><br/> Developer & System Architect</td>
+    <td align="center"><strong>Ruchir Kalokhe</strong><br/>Developer & System Architec</td>
+    <td align="center"><strong>Krishna Naiker</strong><br/>Developer & System Architec</td>
+  </tr>
+</table>
+
+---
+
+## License
+
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+See the [LICENSE](LICENSE) file for the full license text.
+
+### What This Means
+
+- ✅ **You may** use, modify, and distribute this software
+- ✅ **You may** use it for commercial purposes
+- 📋 **You must** include the original copyright notice and license in any copy or fork
+- 📋 **You must** disclose your source code if you distribute or deploy modified versions
+- 📋 **You must** state changes you made to the original code
+- 🌐 **Network use is distribution**: If you run a modified version as a web service (SaaS), you must make your source code available to users of that service
+- ❌ **No warranty** is provided
+
+### Why AGPL-3.0?
+
+TraceLink is a **web application**. Standard open-source licenses like MIT or Apache 2.0 allow anyone to fork, modify, and deploy as a competing service without sharing their changes or crediting the original authors. The AGPL-3.0 closes this "SaaS loophole" — if you deploy a modified TraceLink as a network service, you must release your source code under the same license and credit the original authors.
+
+```
+Copyright (c) 2026 Harsh Jain, Ruchir Kalokhe, Krishna Naiker
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+```
+
+---
+
 <div align="center">
 
 **Built for the MCCIA Industrial Innovation Program**
 
 *Solving traceability challenges in Indian automotive manufacturing*
 
+Copyright © 2026 Harsh Jain, Ruchir Kalokhe, Krishna Naiker. All rights reserved.
+
 </div>
-]]>
