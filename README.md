@@ -144,8 +144,8 @@ Ask questions in plain English. The NLU engine detects intent via keyword matchi
 ## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Frontend (React 19 + Vite)            │
+┌────────────────────────────────────────────────────────┐
+│                    Frontend (React 19 + Vite)          │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐ │
 │  │Dashboard │ │Trace     │ │Import    │ │AI Assistant│ │
 │  │Screen    │ │Screen    │ │Screen    │ │Screen      │ │
@@ -154,31 +154,31 @@ Ask questions in plain English. The NLU engine detects intent via keyword matchi
 │  │Alert     │ │Operator  │ │Compliance│ │Account     │ │
 │  │Screen    │ │Screen    │ │Screen    │ │Screen      │ │
 │  └──────────┘ └──────────┘ └──────────┘ └────────────┘ │
-│                                                         │
-│  Firebase Auth ←→ IndexedDB (Offline Queue)             │
-└───────────────────────┬─────────────────────────────────┘
+│                                                        │
+│  Firebase Auth ←→ IndexedDB (Offline Queue)            │
+└───────────────────────┬────────────────────────────────┘
                         │ HTTPS + Bearer Token
-┌───────────────────────┴─────────────────────────────────┐
-│                 Backend (FastAPI + Uvicorn)              │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │              Audit Middleware                       │ │
-│  │  (logs mutating requests, skips dashboard GETs)    │ │
-│  └────────────────────────────────────────────────────┘ │
-│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌─────┐│
-│  │auth  │ │trace │ │alert │ │import│ │dash  │ │ai   ││
-│  │routes│ │routes│ │routes│ │routes│ │routes│ │route││
-│  └──────┘ └──────┘ └──────┘ └──────┘ └──────┘ └─────┘│
-│  ┌──────┐ ┌──────┐ ┌──────┐ ┌────────────────────────┐│
-│  │oper  │ │review│ │compl │ │   Pipeline Engine       ││
-│  │routes│ │routes│ │routes│ │ (sanitize+impute+batch) ││
-│  └──────┘ └──────┘ └──────┘ └────────────────────────┘│
+┌───────────────────────┴────────────────────────────────┐
+│                 Backend (FastAPI + Uvicorn)            │
+│  ┌────────────────────────────────────────────────────┐│
+│  │              Audit Middleware                      ││
+│  │  (logs mutating requests, skips dashboard GETs)    ││
+│  └────────────────────────────────────────────────────┘│
+│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌─────┐  │
+│  │auth  │ │trace │ │alert │ │import│ │dash  │ │ai   │  │
+│  │routes│ │routes│ │routes│ │routes│ │routes│ │route│  │ 
+│  └──────┘ └──────┘ └──────┘ └──────┘ └──────┘ └─────┘  │
+│  ┌──────┐ ┌──────┐ ┌──────┐ ┌────────────────────────┐ │
+│  │oper  │ │review│ │compl │ │   Pipeline Engine      │ │
+│  │routes│ │routes│ │routes│ │ (sanitize+impute+batch)│ │
+│  └──────┘ └──────┘ └──────┘ └────────────────────────┘ │
 │                                                        │
 │  Linking Engine (confidence scoring, defect-material   │
 │  correlation, supplier anomaly detection)              │
 └───────────────────────┬────────────────────────────────┘
                         │
 ┌───────────────────────┴────────────────────────────────┐
-│              SQLite (WAL mode, 16MB cache)              │
+│              SQLite (WAL mode, 16MB cache)             │
 │  13 tables · 22 indexes · PRAGMA optimizations         │
 └────────────────────────────────────────────────────────┘
 ```
