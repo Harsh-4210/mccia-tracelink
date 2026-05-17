@@ -45,7 +45,11 @@ function useOnline() {
 }
 
 function useTheme() {
-  const [theme, setTheme] = useState(() => localStorage.getItem("tl_theme") || "light");
+  const [theme, setTheme] = useState(() => {
+    const stored = localStorage.getItem("tl_theme");
+    // Only use stored value if it was explicitly set by the user
+    return stored || "light";
+  });
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("tl_theme", theme);
@@ -177,7 +181,7 @@ function NotifPanel({ notifs, onClose }: { notifs: ReturnType<typeof useNotifs>;
    DASHBOARD SHELL
 ══════════════════════════════════════════════ */
 function Shell({ children, page }: { children: ReactNode; page: string }) {
-  const { theme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
   const { t, lang, setLang } = useI18n();
   const notifs = useNotifs();
@@ -251,6 +255,13 @@ function Shell({ children, page }: { children: ReactNode; page: string }) {
               </button>
             ))}
           </div>
+          <button
+            className="tl-icon-btn"
+            onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? Ic.sun : Ic.moon}
+          </button>
           <button className="tl-icon-btn" onClick={() => setShowGuide(true)} title="Help Guide">?</button>
           <div style={{ position: "relative" }}>
             <button className={`tl-icon-btn${notifOpen ? " active" : ""}`} onClick={() => { setNotifOpen(o => !o); if (!notifOpen) notifs.markRead(); }}>
@@ -2349,6 +2360,7 @@ function AccountScreen() {
 function LandingPage() {
   const { isAuthenticated } = useAuth();
   const { t } = useI18n();
+  const { theme, setTheme } = useTheme();
 
   const features = [
     { icon: Ic.trace, title: t("landing.feature.0.title"), desc: t("landing.feature.0.desc") },
@@ -2366,6 +2378,14 @@ function LandingPage() {
           <span style={{ fontFamily: "var(--font-headline)", fontSize: 20, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>TraceLink</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            className="tl-icon-btn"
+            onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            style={{ width: 36, height: 36 }}
+          >
+            {theme === "dark" ? Ic.sun : Ic.moon}
+          </button>
           <Link to={isAuthenticated ? "/app/dashboard" : "/login"} className="tl-btn tl-btn-primary" style={{ textDecoration: "none" }}>
             {isAuthenticated ? "Open Dashboard" : t("login.mode.signin")}
           </Link>
