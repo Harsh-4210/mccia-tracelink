@@ -1,328 +1,520 @@
+<![CDATA[<div align="center">
+
 # TraceLink
 
-TraceLink is a manufacturing traceability system for connecting raw material lots, production batches, quality inspections, dispatch orders, and customer complaints. It is designed for fast recall investigation, supplier-risk analysis, and audit-ready operational visibility.
+### Manufacturing Traceability & Quality Control Platform
 
-The application includes a FastAPI backend, a React/Vite frontend, SQLite-backed demo data, Firebase Authentication, role-based access control, CSV ingestion, trace exports, operator batch entry, compliance actions, and an audit trail.
+**End-to-end supply chain traceability for Indian automotive component manufacturers.**
+Track raw materials → production batches → QC inspections → dispatch orders → customer complaints — all in one system.
 
-## What TraceLink Does
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![Firebase](https://img.shields.io/badge/Firebase-Auth-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com)
+[![SQLite](https://img.shields.io/badge/SQLite-WAL_Mode-003B57?logo=sqlite&logoColor=white)](https://sqlite.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-When a customer reports a defect or a raw material lot is flagged, TraceLink helps answer:
+</div>
 
-- Which raw material lot was used in a dispatch order?
-- Which production batch, machine, operator, and shift produced it?
-- What did QC record for that batch?
-- Which other customer orders may be affected by the same lot?
-- What follow-up actions, reviews, and audit events exist?
+---
 
-Core trace flow:
+## Table of Contents
 
-```text
-Raw Material Lot -> Production Batch -> QC Inspection -> Dispatch Order -> Customer
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [System Architecture](#system-architecture)
+- [Database Schema](#database-schema)
+- [Data Pipeline](#data-pipeline)
+- [API Reference](#api-reference)
+- [Frontend](#frontend)
+- [Authentication](#authentication)
+- [Deployment](#deployment)
+- [Local Development](#local-development)
+- [Environment Variables](#environment-variables)
+- [Project Structure](#project-structure)
+
+---
+
+## Overview
+
+TraceLink solves the **traceability gap** in Indian manufacturing supply chains. When a defective brake pad reaches an OEM customer, TraceLink can trace it back through dispatch → production batch → raw material lot → supplier — in milliseconds. It provides:
+
+- **Forward tracing**: Given a raw material lot, find every dispatch order it touched.
+- **Reverse tracing**: Given a dispatch order, trace back to the exact supplier and material.
+- **Blast radius analysis**: When a lot is flagged, instantly compute financial exposure, escaped shipments, and quarantine recommendations.
+- **Data quality enforcement**: A 5-tier imputation engine fills missing batch IDs with confidence scoring.
+- **AI-powered natural language queries**: Ask questions like "show me all failed batches from Shift A" in plain English.
+
+---
+
+## Key Features
+
+### 1. Full-Chain Traceability
+- **Dispatch → Batch → Lot → Supplier** reverse trace with confidence scoring
+- **Link types**: `deterministic` (exact match), `inferred` (imputed with confidence), `reviewed` (human-approved)
+- **Cross-supplier anomaly detection**: Flags lots sourced from multiple suppliers
+- **Incomplete trace warnings**: Identifies missing production records, QC gaps, or broken material links
+
+### 2. Quality Metrics Dashboard
+- Real-time KPIs: production batch count, QC pass rate, open complaints, unresolved links, open CAPAs
+- **Shift intelligence**: Per-shift fail counts and average defect rates
+- **Top failing machines**: Ranked by QC failure count
+- **Supplier scorecard**: Lots supplied vs complaint count per supplier
+- **Financial exposure tracking**: Aggregated complaint impact in INR
+- **30-second TTL cache** with automatic invalidation after data imports
+
+### 3. CSV Import Pipeline
+- Upload 6 file types: `raw_materials`, `production`, `qc`, `dispatch`, `supplier`, `complaints`
+- **Per-type validation rules** with required column checks, date parsing, and numeric validation
+- **Per-type error thresholds**: Supplier allows 30% errors (sparse master data), production/QC allow 10%
+- **Batch `executemany` inserts** for high-throughput ingestion (40k+ rows in seconds)
+- **SHA-256 duplicate detection**: Prevents re-importing the same file
+- **Source file tracking**: Every import is logged with row counts, error counts, and status
+- **Import rollback**: Delete an import and all domain rows it created are reversed
+
+### 4. 5-Tier Batch ID Imputation Engine
+When production CSV rows are missing `batch_id`, the pipeline infers them using progressively relaxed rules:
+
+| Rule | Confidence | Logic |
+|------|-----------|-------|
+| Rule 1 | 90% | Same lot + same machine, ±7 days |
+| Rule 2 | 75% | Same lot, ±14 days |
+| Rule 3 | 55% | Same lot, ±30 days (closest date) |
+| Rule 4 | 30% | Same lot, nearest neighbor (any date) |
+| Rule 5 | 0% | No match → synthetic ID (`SYN-XXXXXXXX`) |
+
+All inferred links land in the **Review Queue** for human approval/rejection.
+
+### 5. Data Sanitization
+- **SQL injection stripping**: `DROP TABLE`, `OR 1=1`, `UNION SELECT` patterns
+- **XSS prevention**: `<script>`, event handler attributes, iframe/object tags
+- **Path traversal blocking**: `../../etc/passwd` patterns
+- **Template injection**: `{{7*7}}` Jinja/SSTI patterns
+- **Garbage value filtering**: `NaN`, `undefined`, `null`, `[object Object]`, `#REF!`, `#DIV/0!`
+- **Junk string rejection**: Strings with <70% printable characters are discarded
+- **Length truncation**: All text fields capped at 255 characters
+
+### 6. Blast Radius Alerts
+- Given a flagged lot number, computes:
+  - All production batches using that lot
+  - All dispatch orders containing those batches
+  - QC pass/fail status per batch
+  - **Financial exposure** from linked complaints
+  - **Escaped shipments**: Orders dispatched before QC failure was detected
+  - **Quarantine recommendations**: Failed batches not yet dispatched
+- Paginated results with CSV export
+
+### 7. Corrective Action (CAPA) Management
+- Create, list, update corrective actions linked to quality events
+- Fields: root cause, immediate action, corrective action, preventive action, due date
+- Status lifecycle: `open` → `closed`
+
+### 8. Operator Batch Entry
+- Shop-floor operators submit production entries via web form
+- **Offline-first**: Entries queued in IndexedDB when offline, auto-synced when connectivity returns
+- **Idempotency**: `client_entry_id` prevents duplicate submissions during retry
+- **Device tracking**: Each entry records `device_id` for audit
+- **Supervisor approval workflow**: Entries require supervisor sign-off
+
+### 9. AI Natural Language Query Engine
+Ask questions in plain English. The NLU engine detects intent via keyword matching and routes to the appropriate data query:
+
+- `"Show me shift performance"` → Shift intelligence breakdown
+- `"Which machines are failing the most?"` → Top failing machines
+- `"Trace lot LOT-2023-114"` → Full lot alert with blast radius
+- `"How many batches were produced?"` → Count queries
+- `"Give me a summary"` → Full dashboard overview
+- `"What is defect rate?"` → Domain concept explanations
+- `"How do I upload a CSV?"` → Help/tutorial responses
+
+### 10. Audit Trail
+- Every mutating API call (POST/PUT/PATCH/DELETE) is logged with:
+  - User ID, email, action, entity type/ID
+  - Request IP, unique request ID, response status, duration in ms
+- Dashboard GETs are excluded from audit (performance optimization)
+- Queryable via admin API with filtering by action and user
+
+### 11. Multi-Tenancy
+- All domain tables include a `user_id` column
+- Each user sees only their own data across all endpoints
+- Firebase UID is used as the tenant key
+
+---
+
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Frontend (React 19 + Vite)            │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐ │
+│  │Dashboard │ │Trace     │ │Import    │ │AI Assistant│ │
+│  │Screen    │ │Screen    │ │Screen    │ │Screen      │ │
+│  └──────────┘ └──────────┘ └──────────┘ └────────────┘ │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐ │
+│  │Alert     │ │Operator  │ │Compliance│ │Account     │ │
+│  │Screen    │ │Screen    │ │Screen    │ │Screen      │ │
+│  └──────────┘ └──────────┘ └──────────┘ └────────────┘ │
+│                                                         │
+│  Firebase Auth ←→ IndexedDB (Offline Queue)             │
+└───────────────────────┬─────────────────────────────────┘
+                        │ HTTPS + Bearer Token
+┌───────────────────────┴─────────────────────────────────┐
+│                 Backend (FastAPI + Uvicorn)              │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │              Audit Middleware                       │ │
+│  │  (logs mutating requests, skips dashboard GETs)    │ │
+│  └────────────────────────────────────────────────────┘ │
+│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌─────┐│
+│  │auth  │ │trace │ │alert │ │import│ │dash  │ │ai   ││
+│  │routes│ │routes│ │routes│ │routes│ │routes│ │route││
+│  └──────┘ └──────┘ └──────┘ └──────┘ └──────┘ └─────┘│
+│  ┌──────┐ ┌──────┐ ┌──────┐ ┌────────────────────────┐│
+│  │oper  │ │review│ │compl │ │   Pipeline Engine       ││
+│  │routes│ │routes│ │routes│ │ (sanitize+impute+batch) ││
+│  └──────┘ └──────┘ └──────┘ └────────────────────────┘│
+│                                                        │
+│  Linking Engine (confidence scoring, defect-material   │
+│  correlation, supplier anomaly detection)              │
+└───────────────────────┬────────────────────────────────┘
+                        │
+┌───────────────────────┴────────────────────────────────┐
+│              SQLite (WAL mode, 16MB cache)              │
+│  13 tables · 22 indexes · PRAGMA optimizations         │
+└────────────────────────────────────────────────────────┘
 ```
 
-## Key Capabilities
+---
 
-| Area | Capability |
-| --- | --- |
-| Trace search | Backward trace from dispatch orders to production, QC, raw lot, and supplier data |
-| Lot alerts | Forward impact analysis from a raw lot to affected batches and dispatches |
-| CSV ingestion | Upload and validate manufacturing data, with rollback support for imported files |
-| Link review | Review, approve, or reject inferred trace links |
-| Operator entry | Create shop-floor batch entries with idempotent sync support |
-| Dashboard | Operational metrics, QC trends, and shift-level visibility |
-| Compliance | Corrective action tracking for quality follow-up workflows |
-| Auditability | Request-level audit events for trace, import, review, admin, and operator activity |
-| AI assistant | Natural-language query endpoint for logistics and traceability questions |
-| Frontend | React SPA with Firebase login, role-aware workflows, and localized UI support |
+## Database Schema
 
-## Architecture
+13 tables organized in 4 layers:
 
-```text
-Frontend: React + Vite
-  - Firebase client authentication
-  - API client with bearer-token requests
-  - Offline/operator sync helpers
+### Domain Tables
+| Table | Primary Key | Description |
+|-------|------------|-------------|
+| `suppliers` | `supplier_id` | Supplier master data |
+| `raw_materials` | `raw_id` (auto) | Incoming material receipts with lot numbers |
+| `production_batches` | `production_id` (auto) | Production runs with batch IDs and imputation metadata |
+| `qc_inspections` | `batch_id` | Quality control pass/fail with defect classification |
+| `dispatch_orders` | `order_id` | Outgoing shipments to OEM customers |
+| `dispatch_batches` | `(order_id, batch_id, user_id)` | Many-to-many link between orders and batches |
+| `complaints` | `complaint_id` | Customer complaints with financial impact |
 
-Backend: FastAPI
-  - Firebase Admin token verification
-  - Role-based route dependencies
-  - Versioned API routes under /api/v1
-  - Audit middleware
-  - Static frontend serving in production builds
+### Operational Tables
+| Table | Description |
+|-------|-------------|
+| `operator_entries` | Shop-floor production entries with offline sync support |
+| `trace_reviews` | Human review queue for inferred trace links |
+| `corrective_actions` | CAPA lifecycle tracking |
 
-Storage
-  - SQLite database for local/demo operation
-  - CSV source files for sample manufacturing data
+### System Tables
+| Table | Description |
+|-------|-------------|
+| `users` | Firebase-synced user accounts |
+| `audit_events` | Immutable audit trail of all API mutations |
+| `source_files` | Import file metadata with checksums |
+| `source_rows` | Raw JSON of each imported row |
+| `import_errors` | Per-row validation errors |
+
+### Performance Indexes (22 total)
+Indexes cover: `lot_number`, `batch_id`, `input_lot_ref`, `user_id` (all domain tables), `(user_id, pass_fail)`, `(user_id, inferred_batch_id)`, `checksum`, `client_entry_id`, `email`, `timestamp`.
+
+---
+
+## Data Pipeline
+
+### Input Sanitization (`pipeline.py`)
+Every field passes through `clean_text()` which applies 10 compiled regex patterns for injection/XSS stripping, garbage value filtering, printability checks, and length truncation. Numeric fields use `to_int()`/`to_float()` with currency symbol stripping and overflow protection.
+
+### Defect Normalization (`linking.py`)
+Raw defect strings like `"surfDelam"`, `"surface-delamination"`, `"SURFACE DELAMINATION"` are all normalized to `"surface_delamination"` via case-insensitive compact matching.
+
+### Confidence Scoring (`linking.py`)
+When resolving which raw material supplied a production batch, candidates are scored on:
+1. **Defect-material correlation** (+0.25): Maps defect types to material categories (e.g., `surface_delamination` → adhesive/bonding)
+2. **Supplier in complaint** (+0.10): Supplier name appears in complaint root cause text
+3. **Material in complaint** (+0.10): Material type matches complaint context
+4. **Quality grade risk** (+0.08 for grade C, +0.03 for grade B)
+5. **Supplier approval status** (+0.05 if not approved)
+
+Scores ≥0.80 = `deterministic`, below = `inferred`.
+
+---
+
+## API Reference
+
+Base URL: `/api/v1`
+
+### Authentication
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/firebase-sync` | Sync Firebase user → local DB |
+| GET | `/auth/me` | Get current user info |
+| DELETE | `/auth/me` | Delete current user account |
+| GET | `/auth/users` | List all users |
+
+### Dashboard
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/dashboard/metrics` | All KPIs (cached 30s, auto-invalidated after import) |
+
+### Traceability
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/trace/{order_id}` | Full reverse trace for a dispatch order |
+| GET | `/trace/{order_id}/export` | Export trace as CSV |
+
+### Alerts
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/alerts/lots/{lot_number}` | Blast radius analysis with pagination |
+| GET | `/alerts/lots/{lot_number}/export` | Export alert as CSV |
+
+### Data Import
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/imports` | Upload CSV (multipart form: `file` + `file_type`) |
+| GET | `/imports` | List all imports for current user |
+| GET | `/imports/{import_id}` | Get import details with errors |
+| DELETE | `/imports/{import_id}` | Rollback import and all domain rows |
+
+### Operator
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/operator/batches` | Submit production entry (idempotent via `client_entry_id`) |
+| GET | `/operator/batches/recent` | Recent entries |
+| GET | `/operator/batches/pending` | Entries awaiting supervisor approval |
+| POST | `/operator/batches/{id}/approve` | Approve an entry |
+
+### Review Queue
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/review/unresolved-links` | Paginated list of inferred links needing review |
+| POST | `/review/unresolved-links/{id}/approve` | Approve an inferred link |
+| POST | `/review/unresolved-links/{id}/reject` | Reject an inferred link |
+
+### Compliance (CAPA)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/compliance/corrective-actions` | Create CAPA |
+| GET | `/compliance/corrective-actions` | List CAPAs (filterable by status) |
+| GET | `/compliance/corrective-actions/{id}` | Get single CAPA |
+| PATCH | `/compliance/corrective-actions/{id}` | Update CAPA fields |
+
+### AI Query
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/ai/query` | Natural language query (body: `{"query": "..."}`) |
+
+### Admin
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/admin/health` | System health + table counts + DB size |
+| GET | `/admin/audit-events` | Paginated audit log with filters |
+| GET | `/admin/pipeline-audit` | Imputation breakdown, temporal warnings, lot anomalies |
+| GET | `/admin/users` | User management |
+
+### Public
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Basic health check (no auth) |
+
+---
+
+## Frontend
+
+Single-page application built with **React 19 + TypeScript + Vite**.
+
+### Design System
+- **Fonts**: Hanken Grotesk (headlines), Chivo (body), Outfit (labels)
+- **Color palette**: Navy authority, Blue action-only, Slate tertiary
+- **Modes**: Light (industrial shop floor) and Dark (Bloomberg/Aerospace aesthetic)
+- **Motion**: Custom cubic-bezier easing (`--ease-out`, `--ease-spring`)
+- **CSS**: Vanilla CSS with CSS custom properties (no Tailwind)
+
+### Screens
+| Screen | Description |
+|--------|-------------|
+| **Dashboard** | KPI cards, defect trend chart, shift intelligence, supplier scorecard, recent complaints |
+| **Trace** | Enter dispatch order ID → full reverse trace visualization with link-type badges |
+| **Alerts** | Enter lot number → blast radius with escaped shipments, financial exposure, quarantine recommendations |
+| **Import** | Custom animated dropdown for file type, drag-and-drop CSV upload with progress bar, error report |
+| **Operator** | Production entry form with offline queue indicator and sync status |
+| **AI Assistant** | Chat interface for natural language queries |
+| **Compliance** | CAPA list with create/update forms |
+| **Account** | User info, usage stats (rows ingested, DB size, API calls), delete account |
+
+### Offline-First Architecture
+- **IndexedDB queue** (`tracelink-offline` database) stores operator entries when offline
+- Entries include `client_entry_id` (UUID) for idempotent sync
+- `device_id` is persisted in localStorage for device tracking
+- Auto-sync on reconnection with per-entry error handling
+- Failed entries remain in queue with error messages for retry
+
+### Internationalization
+- Hindi transliteration support via `transliterate.ts` (89KB mapping table)
+- i18n module (`i18n.tsx`) for future multi-language support
+
+---
+
+## Authentication
+
+TraceLink uses **Firebase Authentication** for all user management:
+
+1. **Frontend**: Firebase SDK handles login/register UI and token management
+2. **Backend**: `firebase-admin` SDK verifies ID tokens on every request
+3. **User sync**: On first login, Firebase UID is synced to local `users` table via `/auth/firebase-sync`
+4. **Token flow**: Frontend gets ID token → sends as `Authorization: Bearer <token>` → backend verifies via `firebase_auth.verify_id_token()`
+5. **Re-registration handling**: If a user deletes their Firebase account and re-registers with the same email, the old account is archived and a fresh tenant is created
+
+All role guards (`require_admin`, `require_quality_or_above`, etc.) are currently aliases for `get_current_user` — every authenticated user has full access.
+
+---
+
+## Deployment
+
+### Render (Docker)
+
+TraceLink is containerized with a multi-stage Dockerfile:
+
+1. **Stage 1** (Bun): Builds the frontend Vite SPA
+2. **Stage 2** (Python 3.11-slim): Serves the API + static frontend
+
+```bash
+# Build and deploy via Render
+# Connect your GitHub repo → Render auto-detects Dockerfile
 ```
 
-The production Docker image builds the frontend with Bun, installs the Python API dependencies, copies the sample CSV files, and serves both API and static SPA from one container.
+### Persistent Storage
 
-## Repository Layout
+On **Render**, the app auto-detects the environment:
+- If a **Persistent Disk** is mounted at `/data`, the database lives at `/data/tracelink.sqlite3` (survives redeployments)
+- Otherwise, falls back to `/tmp/tracelink/tracelink.sqlite3` (survives within a deploy lifecycle)
+- Locally, the database lives at `backend/tracelink.sqlite3`
 
-```text
-.
-├── backend/
-│   ├── app/
-│   │   ├── api/                 # Versioned route modules
-│   │   ├── auth.py              # Firebase token verification and RBAC helpers
-│   │   ├── config.py            # Environment configuration
-│   │   ├── db.py                # SQLite connection helpers
-│   │   ├── linking.py           # Trace-link matching and scoring
-│   │   ├── main.py              # FastAPI app, middleware, routes, SPA mount
-│   │   ├── middleware.py        # Audit logging middleware
-│   │   ├── pipeline.py          # Schema creation and CSV rebuild pipeline
-│   │   └── schemas.py           # Request/response models
-│   ├── requirements.txt
-│   └── tests/
-├── docs/
-│   ├── data-cleaning-assumptions.md
-│   └── scaling-to-10-lines.md
-├── frontend/
-│   ├── src/
-│   ├── package.json
-│   └── vite.config.ts
-├── *.csv                        # Demo manufacturing data
-├── Dockerfile
-└── README.md
+The `DB_PATH` environment variable can override all defaults.
+
+### Performance Tuning
+
+SQLite is configured for high-throughput:
+```
+PRAGMA journal_mode = WAL      -- concurrent reads during writes
+PRAGMA synchronous = NORMAL    -- balanced durability/speed
+PRAGMA cache_size = -16000     -- 16MB page cache
+PRAGMA busy_timeout = 10000    -- 10s retry on lock contention
 ```
 
-## Prerequisites
+Dashboard metrics are served from a **30-second TTL in-memory cache** per user. The cache is automatically invalidated after every CSV import, so metrics reflect new data within seconds.
 
-- Python 3.11 recommended
-- Node.js 18+ or Bun for frontend development
-- Firebase project with Email/Password auth enabled
-- Firebase service account credentials for backend token verification
+---
 
-## Local Setup
+## Local Development
 
-### 1. Backend
+### Prerequisites
+- Python 3.11+
+- Node.js 18+ or Bun
+- Firebase project with Authentication enabled
 
+### Backend Setup
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # macOS/Linux
+
 pip install -r requirements.txt
+
+# Place your Firebase service account key:
+# backend/serviceAccountKey.json
+
+uvicorn app.main:app --reload --port 8000
 ```
 
-Place your Firebase service account JSON at:
-
-```text
-backend/serviceAccountKey.json
-```
-
-Then rebuild the local SQLite database from the CSV files:
-
-```bash
-python -c "from app.pipeline import rebuild_database; print(rebuild_database())"
-```
-
-Start the API:
-
-```bash
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-Useful backend URLs:
-
-- Health check: `http://127.0.0.1:8000/api/health`
-- OpenAPI docs: `http://127.0.0.1:8000/api/docs`
-
-### 2. Frontend
-
+### Frontend Setup
 ```bash
 cd frontend
-npm install
-cp .env.example .env
-npm run dev
+bun install        # or npm install
+bun run dev        # or npm run dev
 ```
 
-Fill `frontend/.env` with the Firebase web app config from your Firebase project settings before starting the frontend.
+The frontend dev server proxies API requests to `localhost:8000`.
 
-The Vite development server listens on:
+### First Run
+1. The database is auto-created on first startup (`lifespan` creates schema + indexes)
+2. Register via the Firebase Auth UI on the frontend
+3. Upload CSV files via the Import screen
+4. Dashboard populates immediately after upload (cache is invalidated)
 
-```text
-http://localhost:5173
-```
+---
 
-## Configuration
+## Environment Variables
 
-TraceLink reads configuration from environment variables or a root `.env` file.
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `ENVIRONMENT` | `dev` | Use `dev`, `staging`, or `production` |
-| `DATABASE_URL` | `sqlite:///backend/tracelink.sqlite3` | Database URL placeholder for current SQLite setup |
-| `DB_PATH` | `backend/tracelink.sqlite3` | SQLite database path |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_PATH` | `backend/tracelink.sqlite3` | SQLite database file path |
+| `ENVIRONMENT` | `dev` | `dev` / `staging` / `production` |
+| `CORS_ORIGINS` | `*` | Comma-separated allowed origins (must be restricted in production) |
 | `FIREBASE_PROJECT_ID` | `tracelink-793ba` | Firebase project ID |
-| `GOOGLE_APPLICATION_CREDENTIALS` | `backend/serviceAccountKey.json` | Firebase service account key path |
-| `CORS_ORIGINS` | `*` | Allowed browser origins; must be restricted in production |
-| `DEFAULT_ADMIN_EMAIL` | project default | Seeded admin email used by the local data pipeline |
-| `DEFAULT_ADMIN_PASSWORD` | `FIREBASE_AUTH` | Placeholder marker for Firebase-managed auth |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | _(empty)_ | Full JSON string of service account key (for deployment) |
+| `FIREBASE_SERVICE_ACCOUNT_PATH` | `backend/serviceAccountKey.json` | Path to service account key file (for local dev) |
+| `FRONTEND_DIST` | `frontend/dist` | Path to built frontend assets |
+| `VITE_FIREBASE_API_KEY` | _(required)_ | Firebase web API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | _(required)_ | Firebase auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | _(required)_ | Firebase project ID (frontend) |
 
-Frontend Firebase configuration is read by Vite from `frontend/.env`:
+---
 
-| Variable | Purpose |
-| --- | --- |
-| `VITE_FIREBASE_API_KEY` | Firebase web API key |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Firebase Auth domain |
-| `VITE_FIREBASE_PROJECT_ID` | Firebase project ID |
-| `VITE_FIREBASE_STORAGE_BUCKET` | Firebase storage bucket |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Firebase messaging sender ID |
-| `VITE_FIREBASE_APP_ID` | Firebase web app ID |
-| `VITE_FIREBASE_MEASUREMENT_ID` | Firebase measurement ID, if analytics is enabled |
+## Project Structure
 
-Production mode refuses to start when `CORS_ORIGINS` is empty or `*`.
-
-## Authentication and Roles
-
-The frontend authenticates users with Firebase. Backend requests must include a Firebase ID token:
-
-```http
-Authorization: Bearer <firebase-id-token>
+```
+mccia-tracelink/
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── admin_routes.py      # Audit logs, health, pipeline audit
+│   │   │   ├── ai_routes.py         # NLU query engine (463 lines)
+│   │   │   ├── alert_routes.py      # Blast radius + pagination + CSV export
+│   │   │   ├── auth_routes.py       # Firebase sync, user CRUD
+│   │   │   ├── compliance_routes.py # CAPA lifecycle
+│   │   │   ├── dashboard_routes.py  # Metrics with 30s TTL cache
+│   │   │   ├── import_routes.py     # CSV upload, validation, rollback
+│   │   │   ├── operator_routes.py   # Batch entries with idempotency
+│   │   │   ├── review_routes.py     # Unresolved link review queue
+│   │   │   └── trace_routes.py      # Full-chain trace + CSV export
+│   │   ├── auth.py                  # Firebase token verification
+│   │   ├── config.py                # Pydantic settings from env/.env
+│   │   ├── db.py                    # SQLite connection + Render detection
+│   │   ├── linking.py               # Confidence scoring engine
+│   │   ├── main.py                  # FastAPI app + SPA serving
+│   │   ├── middleware.py            # Audit logging middleware
+│   │   ├── pipeline.py              # Schema, sanitization, imputation, batch inserts
+│   │   └── schemas.py               # Pydantic request/response models
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── terminal/
+│   │   │   ├── App.tsx              # All screens (2000+ lines)
+│   │   │   └── styles.css           # Design system (1650+ lines)
+│   │   ├── api.ts                   # Typed API client with auth headers
+│   │   ├── auth/                    # Firebase auth components
+│   │   ├── firebase.ts              # Firebase SDK initialization
+│   │   ├── i18n.tsx                 # Internationalization
+│   │   ├── offlineQueue.ts          # IndexedDB offline sync
+│   │   └── transliterate.ts         # Hindi transliteration
+│   └── package.json
+├── Dummy Data/                      # Sample CSVs for testing
+├── Dockerfile                       # Multi-stage (Bun → Python 3.11)
+├── *.csv                            # Augmented test data (~40k rows each)
+└── README.md
 ```
 
-The API verifies the token with `firebase-admin`, creates or updates a local user record, and enforces route access using local roles.
+---
 
-Supported roles:
+<div align="center">
 
-| Role | Intended access |
-| --- | --- |
-| `pending` | Newly synced user awaiting role assignment |
-| `operator` | Operator batch entry and standard trace visibility |
-| `supervisor` | Operator review and inferred-link approval |
-| `quality` | Imports, compliance workflows, and quality review |
-| `manager` | Dashboard, trace, alert, and reporting workflows |
-| `admin` | User management, audit logs, health, and administrative actions |
+**Built for the MCCIA Industrial Innovation Program**
 
-Admin role assignment is available through:
+*Solving traceability challenges in Indian automotive manufacturing*
 
-```http
-PATCH /api/v1/auth/users/{user_id}/role?role=admin
-```
-
-## API Overview
-
-Most application endpoints are mounted under `/api/v1`.
-
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/v1/auth/firebase-sync` | Sync Firebase user into the local user table |
-| `GET` | `/api/v1/auth/me` | Return current user profile and role |
-| `GET` | `/api/v1/auth/users` | List users for admin management |
-| `PATCH` | `/api/v1/auth/users/{user_id}/role` | Update a user's role |
-| `GET` | `/api/v1/trace/dispatch/{order_id}` | Trace a dispatch order backward through production, QC, and raw material data |
-| `GET` | `/api/v1/trace/dispatch/{order_id}/export` | Export trace results |
-| `GET` | `/api/v1/alerts/lots/{lot_number}` | Analyze downstream impact for a flagged raw lot |
-| `GET` | `/api/v1/alerts/lots/{lot_number}/export` | Export lot impact results |
-| `POST` | `/api/v1/operator/batches` | Create an operator batch entry |
-| `GET` | `/api/v1/operator/batches/recent` | List recent operator entries |
-| `GET` | `/api/v1/operator/batches/pending` | List pending operator entries |
-| `POST` | `/api/v1/operator/batches/{entry_id}/approve` | Approve an operator entry |
-| `POST` | `/api/v1/imports` | Upload a CSV import |
-| `GET` | `/api/v1/imports` | List imports |
-| `GET` | `/api/v1/imports/{import_id}` | Inspect an import |
-| `DELETE` | `/api/v1/imports/{import_id}` | Roll back imported data |
-| `GET` | `/api/v1/review/unresolved-links` | List inferred links needing review |
-| `POST` | `/api/v1/review/unresolved-links/{production_id}/approve` | Approve an inferred link |
-| `POST` | `/api/v1/review/unresolved-links/{production_id}/reject` | Reject an inferred link |
-| `GET` | `/api/v1/dashboard/metrics` | Return dashboard metrics |
-| `POST` | `/api/v1/compliance/corrective-actions` | Create a corrective action |
-| `GET` | `/api/v1/compliance/corrective-actions` | List corrective actions |
-| `GET` | `/api/v1/admin/audit-events` | View audit events |
-| `GET` | `/api/v1/admin/pipeline-audit` | Inspect pipeline and imputation audit data |
-| `GET` | `/api/v1/admin/health` | Administrative health details |
-| `POST` | `/api/v1/ai/query` | AI-assisted logistics query endpoint |
-
-There are also legacy compatibility endpoints under `/api/*` for selected trace, alert, rebuild, and operator workflows.
-
-## Demo Data
-
-The root CSV files provide a complete sample traceability dataset:
-
-| File | Contents |
-| --- | --- |
-| `raw_materials_log.csv` | Raw material lots, suppliers, receipt data, and material metadata |
-| `production_log.csv` | Production batches, machines, operators, shifts, and raw-lot references |
-| `qc_inspection.csv` | QC results, defect types, and defect rates |
-| `dispatch_log.csv` | Dispatch orders, customers, dates, and batch references |
-| `supplier_master.csv` | Supplier metadata and approval status |
-| `defect_complaints.csv` | Customer complaints and root-cause references |
-
-The database is rebuilt from these files by `backend/app/pipeline.py`.
-
-## Testing
-
-Run backend tests from the repository root with:
-
-```bash
-PYTHONPATH=backend pytest backend/tests
-```
-
-Build the frontend with:
-
-```bash
-cd frontend
-npm run build
-```
-
-## Render Deployment
-
-The project is currently deployed on Render as a Docker web service. Render builds the root `Dockerfile`, which compiles the frontend and serves the FastAPI API plus the static React app from one container.
-
-Current production service:
-
-```text
-https://tracelink.ruchir.dev
-```
-
-Render should deploy automatically when changes are merged into the connected `main` branch, as long as auto-deploy is enabled for the service and the service is watching the correct GitHub repository and branch.
-
-For a manual deploy in Render:
-
-1. Open the `mccia-tracelink` web service.
-2. Confirm the connected branch is `main`.
-3. Use `Manual Deploy -> Deploy latest commit`.
-4. Confirm the deploy event references the latest Git commit from `main`.
-
-The service is expected to run with:
-
-```text
-PORT=8000
-```
-
-The Dockerfile command binds to Render's assigned port with `${PORT:-8000}`.
-
-## Docker
-
-Build the image locally:
-
-```bash
-docker build -t tracelink .
-```
-
-Run it:
-
-```bash
-docker run --rm -p 8000:8000 \
-  -e ENVIRONMENT=dev \
-  -e GOOGLE_APPLICATION_CREDENTIALS=/app/backend/serviceAccountKey.json \
-  tracelink
-```
-
-For production deployment, provide credentials securely through your platform's secret manager rather than baking them into the image.
-
-## Production Notes
-
-Before using TraceLink with live manufacturing data:
-
-- Restrict `CORS_ORIGINS` to approved domains.
-- Store Firebase service account credentials outside the repository.
-- Replace local/demo SQLite operation with a managed production database when concurrency, retention, backup, and migration controls are required.
-- Put API traffic behind HTTPS.
-- Define backup and restore procedures for database and uploaded source files.
-- Review `docs/data-cleaning-assumptions.md` before onboarding customer data.
-- Review `docs/scaling-to-10-lines.md` for multi-line or larger plant deployments.
-
-## License
-
-MIT
+</div>
+]]>
