@@ -6,7 +6,10 @@ import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
+  reauthenticateWithPopup,
   deleteUser,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
   type User as FirebaseUser,
 } from "firebase/auth";
 import { auth } from "../firebase";
@@ -27,7 +30,8 @@ type AuthContextType = {
   loginWithGoogle: () => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  deleteUserAccount: () => Promise<void>;
+  deleteUserAccount: (password?: string) => Promise<void>;
+  isGoogleUser: boolean;
   loading: boolean;
 };
 
@@ -41,6 +45,7 @@ const AuthContext = createContext<AuthContextType>({
   register: async () => {},
   logout: async () => {},
   deleteUserAccount: async () => {},
+  isGoogleUser: false,
   loading: true,
 });
 
@@ -142,20 +147,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const deleteUserAccount = async () => {
+  const isGoogleUser = !!(firebaseUser?.providerData?.[0]?.providerId === "google.com");
+
+  const deleteUserAccount = async (password?: string) => {
     if (!firebaseUser) return;
     try {
+      // Re-authenticate based on provider
+      if (isGoogleUser) {
+        // Google users: re-auth via popup (no password needed)
+        await reauthenticateWithPopup(firebaseUser, googleProvider);
+      } else if (password && firebaseUser.email) {
+        // Email/password users: re-auth with credential
+        const credential = EmailAuthProvider.credential(firebaseUser.email, password);
+        await reauthenticateWithCredential(firebaseUser, credential);
+      }
       // Delete from local backend first
-      const token = await firebaseUser.getIdToken();
+      const tkn = await firebaseUser.getIdToken();
       await fetch("/api/v1/auth/me", {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${tkn}` }
       });
       // Delete from Firebase
       await deleteUser(firebaseUser);
       setToken(null);
       setUser(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to delete account:", err);
       throw err;
     }
@@ -168,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         firebaseUser,
         token,
         isAuthenticated: !!user,
+        isGoogleUser,
         login,
         loginWithGoogle,
         register,

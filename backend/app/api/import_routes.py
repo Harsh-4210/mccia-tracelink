@@ -106,10 +106,13 @@ async def upload_import(
     content = (await file.read()).decode("utf-8-sig")
     checksum = hashlib.sha256(content.encode()).hexdigest()
 
-    # Check for duplicate file
+    # Check for duplicate file (scoped to this user only)
     conn = connect()
     try:
-        dup = conn.execute("SELECT import_id FROM source_files WHERE checksum = ?", (checksum,)).fetchone()
+        dup = conn.execute(
+            "SELECT import_id FROM source_files WHERE checksum = ? AND user_id = ?",
+            (checksum, user.get("user_id")),
+        ).fetchone()
         if dup:
             raise HTTPException(status_code=409, detail=f"Duplicate file detected (matches import {dup['import_id']})")
     finally:

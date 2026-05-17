@@ -21,6 +21,10 @@ import { useI18n, LANGS, LANG_LABELS, type Lang } from "../i18n";
 import { enqueueEntry, getDeviceId, getQueuedEntries, syncQueuedEntries } from "../offlineQueue";
 import { Icons } from "./icons";
 import "./styles.css";
+import {
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from "recharts";
 
 // Alias for brevity
 const Ic = Icons;
@@ -350,9 +354,7 @@ function Spark({ data }: { data: number[] }) {
   );
 }
 
-/* ══════════════════════════════════════════════
-   LOGIN PAGE (NEW DESIGN)
-══════════════════════════════════════════════ */
+
 export function LoginPageNew() {
   const { login, loginWithGoogle, register } = useAuth();
   const { isAuthenticated } = useAuth();
@@ -478,24 +480,77 @@ export function LoginPageNew() {
 /* ══════════════════════════════════════════════
    DASHBOARD SCREEN
 ══════════════════════════════════════════════ */
+
+// Recharts theme-aware colours (CSS vars resolved at runtime)
+const CHART_COLORS = ["#2563EB", "#D97706", "#16A34A", "#7C3AED", "#DC2626"];
+
 function DashboardScreen() {
   const { t } = useI18n();
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(() => {
     try { const c = sessionStorage.getItem("tl_dash_cache"); return c ? JSON.parse(c) : null; } catch { return null; }
   });
-  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(!sessionStorage.getItem("tl_dash_cache"));
 
   useEffect(() => {
     fetchDashboard().then(d => {
       setMetrics(d);
       sessionStorage.setItem("tl_dash_cache", JSON.stringify(d));
-    }).catch(e => setErr(e.message));
+    }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  const isEmpty = metrics && metrics.batch_count === 0;
+  // Empty when: fetch done and no data, OR batch_count is 0
+  const isEmpty = !loading && (!metrics || metrics.batch_count === 0);
 
-  const trendData = metrics?.defect_trend?.slice(0, 10).map(d => d.failures || 0).reverse() || [];
-  const maxFail = metrics?.shift_metrics ? Math.max(...metrics.shift_metrics.filter(s => s.shift && s.shift.length <= 5).map(s => s.fail_count), 1) : 1;
+  // ── Defect trend: reverse so oldest→newest left→right
+  const trendData = (metrics?.defect_trend?.slice(0, 10) || []).slice().reverse().map(d => ({
+    date: String(d.inspection_date || "").slice(-5),
+    total: Number(d.total) || 0,
+    failures: Number(d.failures) || 0,
+  }));
+
+  // ── Shift pie data
+  const shiftData = (metrics?.shift_metrics || [])
+    .filter(s => s.shift && String(s.shift).length <= 3)
+    .map(s => ({ name: `Shift ${s.shift}`, value: s.fail_count, defect: s.avg_defect_rate }));
+
+  // ── Top failing machines for horizontal bar
+  const machineData = (metrics?.top_failing_machines || []).map(m => ({
+    machine: m.machine_id, fails: m.fail_count, defect: m.avg_defect_rate,
+  }));
+
+  const CustomTooltipArea = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 12px", fontSize: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+        <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--text-primary)" }}>{label}</div>
+        {payload.map((p: any) => (
+          <div key={p.dataKey} style={{ color: p.color, display: "flex", gap: 8 }}>
+            <span>{p.name}:</span><span style={{ fontWeight: 600 }}>{p.value}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const CustomTooltipBar = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0]?.payload;
+    return (
+      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 12px", fontSize: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+        <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>{d?.machine}</div>
+        <div style={{ color: "#DC2626" }}>Failures: <strong>{d?.fails}</strong></div>
+        <div style={{ color: "#D97706" }}>Avg Defect: <strong>{d?.defect}%</strong></div>
+      </div>
+    );
+  };
+
+  const CustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, name, value }: any) => {
+    const RADIAN = Math.PI / 180;
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+    return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={700}>{value}</text>;
+  };
 
   return (
     <Shell page="DASHBOARD">
@@ -504,14 +559,11 @@ function DashboardScreen() {
           <div className="tl-crumb">Quality Metrics</div>
           <div className="tl-page-title">Dashboard</div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {metrics && <div style={{ fontFamily: "var(--font-label)", fontSize: 11, color: "var(--text-tertiary)", alignSelf: "flex-end", paddingBottom: 4 }}>
-            Last refreshed {new Date().toLocaleTimeString()}
-          </div>}
-        </div>
+        {metrics && <div style={{ fontFamily: "var(--font-label)", fontSize: 11, color: "var(--text-tertiary)", alignSelf: "flex-end", paddingBottom: 4 }}>
+          Last refreshed {new Date().toLocaleTimeString()}
+        </div>}
       </div>
 
-      {err && <div className="tl-alert tl-alert-danger anim-up">{Ic.alert} {err}</div>}
 
       {isEmpty && (
         <div className="tl-card anim-up" style={{ textAlign: "center", padding: "60px 40px" }}>
@@ -528,140 +580,167 @@ function DashboardScreen() {
 
       {metrics && !isEmpty && (
         <>
-          {/* Metric Strip */}
-          <div className="tl-metrics stagger">
+          {/* ── KPI Cards ── */}
+          <div className="tl-kpi-row stagger">
             <Metric label={t("dash.prod_batches")} value={metrics.batch_count.toLocaleString()} sub="All-time" icon={Ic.operator} />
             <Metric label={t("dash.qc_pass")} value={`${metrics.pass_rate}%`} sub="All-time" color="var(--green)" icon={Ic.check} />
             <Metric label={t("dash.open_complaints")} value={metrics.open_complaints} sub="View all" color={metrics.open_complaints > 0 ? "var(--red)" : "var(--green)"} icon={Ic.alert} to="/app/complaints" />
             <Metric label={t("dash.financial_exposure")} value={`₹ ${Math.round(metrics.financial_exposure || 0).toLocaleString()}`} sub={t("dash.from_complaints")} color="var(--amber)" icon={Ic.alert} to="/app/financial-exposure" />
-            <Metric label={t("dash.unresolved_links")} value={metrics.unresolved_links} sub="Needs review" color={metrics.unresolved_links > 0 ? "var(--amber)" : "var(--green)"} icon={Ic.review} to="/app/review" />
-            <Metric label={t("dash.open_capas")} value={metrics.open_corrective_actions} sub="Open" color="var(--purple)" icon={Ic.compliance} to="/app/compliance" />
-            <Metric label={t("dash.pending")} value={metrics.pending_operator_entries} sub={t("dash.operator_submissions")} icon={Ic.operator} to="/app/operator" />
+          </div>
+          <div className="tl-kpi-secondary stagger">
+            <Link to="/app/review" className="tl-kpi-sm">
+              <div className="tl-kpi-sm-icon" style={{ background: "var(--amber-dim)", color: "var(--amber)" }}>{Ic.review}</div>
+              <div className="tl-kpi-sm-text">
+                <div className="tl-kpi-sm-val">{metrics.unresolved_links}</div>
+                <div className="tl-kpi-sm-label">{t("dash.unresolved_links")}</div>
+              </div>
+            </Link>
+            <Link to="/app/compliance" className="tl-kpi-sm">
+              <div className="tl-kpi-sm-icon" style={{ background: "var(--purple-dim)", color: "var(--purple)" }}>{Ic.compliance}</div>
+              <div className="tl-kpi-sm-text">
+                <div className="tl-kpi-sm-val">{metrics.open_corrective_actions}</div>
+                <div className="tl-kpi-sm-label">{t("dash.open_capas")}</div>
+              </div>
+            </Link>
+            <Link to="/app/operator" className="tl-kpi-sm">
+              <div className="tl-kpi-sm-icon" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>{Ic.operator}</div>
+              <div className="tl-kpi-sm-text">
+                <div className="tl-kpi-sm-val">{metrics.pending_operator_entries}</div>
+                <div className="tl-kpi-sm-label">{t("dash.pending")}</div>
+              </div>
+            </Link>
           </div>
 
-          {/* Shift Intelligence + Defect Trend */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-            <div className="tl-card anim-up">
-              <div className="tl-card-header">
-                <div className="tl-card-title">{t("dash.shift_intel")}</div>
-                <div className="tl-card-tag">{t("dash.shift_tag")}</div>
-              </div>
-              <div className="tl-shift-grid">
-                {metrics.shift_metrics?.filter(s => s.shift && s.shift.length <= 3).map(s => {
-                  const cleanShifts = metrics.shift_metrics.filter(x => x.shift && x.shift.length <= 3);
-                  const isWorst = s.fail_count === Math.max(...cleanShifts.map(x => x.fail_count));
-                  const pct = Math.round((s.fail_count / maxFail) * 100);
-                  return (
-                    <div key={s.shift} className={`tl-shift-card${isWorst ? " worst" : ""}`}>
-                      <div className="tl-shift-label">
-                        <span className="tl-shift-label-text" title={`Shift ${s.shift}`}>Shift {s.shift}</span>
-                        {isWorst && <span className="tl-badge tl-badge-fail" style={{ flexShrink: 0 }}>Worst</span>}
-                      </div>
-                      <div className="tl-shift-value">{s.fail_count}</div>
-                      <div className="tl-shift-sub">fails · {s.avg_defect_rate}% avg defect</div>
-                      <div className="tl-shift-bar-wrap">
-                        <div className="tl-shift-bar-fill" style={{ width: `${pct}%`, "--bar-color": isWorst ? "var(--red)" : "var(--text-secondary)" } as any} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {/* ── Row 1: Defect Trend Area Chart + Shift Pie Chart ── */}
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
 
+            {/* Defect Trend — AreaChart */}
             <div className="tl-card anim-up">
               <div className="tl-card-header">
                 <div className="tl-card-title">{t("dash.defect_trend")}</div>
-                <div className="tl-card-tag">{t("dash.defect_tag")}</div>
+                <div className="tl-card-tag">Last 10 dates</div>
               </div>
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 24 }}>
-                <Ring pct={metrics.pass_rate} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>Failures per inspection date</div>
-                  <Spark data={trendData} />
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-tertiary)", fontFamily: "var(--font-label)", marginTop: 4 }}>
-                    <span>Oldest</span><span>Recent</span>
-                  </div>
-                </div>
-              </div>
-              {metrics.defect_trend && metrics.defect_trend.length > 0 && (
-                <div className="tl-table-wrap" style={{ marginTop: 14, maxHeight: 160, overflowY: "auto" }}>
-                  <table className="tl-table" style={{ fontSize: 11 }}>
-                    <thead><tr><th>Date</th><th>Total</th><th>Failures</th><th>Defect %</th></tr></thead>
-                    <tbody>
-                      {metrics.defect_trend.slice(0, 10).map((d: any) => (
-                        <tr key={d.inspection_date}>
-                          <td style={{ fontFamily: "var(--font-label)" }}>{d.inspection_date}</td>
-                          <td style={{ fontFamily: "var(--font-label)" }}>{d.total}</td>
-                          <td style={{ color: d.failures > 0 ? "var(--red)" : "var(--green)", fontFamily: "var(--font-label)", fontWeight: 600 }}>{d.failures}</td>
-                          <td style={{ color: "var(--amber)", fontFamily: "var(--font-label)" }}>{d.avg_defect_rate}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              {trendData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={trendData} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gradTotal" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#2563EB" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="gradFail" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#DC2626" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#DC2626" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-faint)" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--text-tertiary)", fontFamily: "var(--font-label)" }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: "var(--text-tertiary)", fontFamily: "var(--font-label)" }} axisLine={false} tickLine={false} />
+                    <Tooltip content={<CustomTooltipArea />} />
+                    <Legend wrapperStyle={{ fontSize: 11, fontFamily: "var(--font-label)" }} />
+                    <Area type="monotone" dataKey="total" name="Total Inspections" stroke="#2563EB" strokeWidth={2} fill="url(#gradTotal)" dot={false} activeDot={{ r: 5 }} />
+                    <Area type="monotone" dataKey="failures" name="Failures" stroke="#DC2626" strokeWidth={2} fill="url(#gradFail)" dot={{ r: 3, fill: "#DC2626" }} activeDot={{ r: 5 }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ textAlign: "center", padding: 40, color: "var(--text-tertiary)", fontSize: 12 }}>No defect trend data. Upload QC inspection files to populate.</div>
               )}
-              {(!metrics.defect_trend || metrics.defect_trend.length === 0) && (
-                <div style={{ textAlign: "center", padding: 20, color: "var(--text-tertiary)", fontSize: 12 }}>No defect trend data available. Upload QC inspection files to populate.</div>
+            </div>
+
+            {/* Shift Intelligence — PieChart donut */}
+            <div className="tl-card anim-up">
+              <div className="tl-card-header">
+                <div className="tl-card-title">{t("dash.shift_intel")}</div>
+                <div className="tl-card-tag">QC fails by shift</div>
+              </div>
+              {shiftData.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie data={shiftData} cx="50%" cy="50%" innerRadius={50} outerRadius={80}
+                        dataKey="value" nameKey="name" labelLine={false} label={<CustomPieLabel />}>
+                        {shiftData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip formatter={(v, n) => [`${v} fails`, n]} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--border-default)", fontFamily: "var(--font-label)" }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                    {shiftData.map((s, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                        <div style={{ width: 10, height: 10, borderRadius: "50%", background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
+                        <span style={{ color: "var(--text-secondary)", flex: 1 }}>{s.name}</span>
+                        <span style={{ fontWeight: 600, fontFamily: "var(--font-label)", color: "var(--text-primary)" }}>{s.value}</span>
+                        <span style={{ color: "var(--text-tertiary)", fontSize: 11 }}>{s.defect}%</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-faint)", display: "flex", alignItems: "center", gap: 14, background: "var(--bg-inset)", borderRadius: 10, padding: "10px 14px", marginLeft: -4, marginRight: -4 }}>
+                    <Ring pct={metrics.pass_rate} size={52} />
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }}>QC Pass Rate</div>
+                      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>Across all inspections</div>
+                    </div>
+                    <div style={{ marginLeft: "auto", fontFamily: "var(--font-headline)", fontSize: 22, fontWeight: 800, color: "var(--green)" }}>{metrics.pass_rate}%</div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: "center", padding: 40, color: "var(--text-tertiary)", fontSize: 12 }}>No shift data available.</div>
               )}
             </div>
           </div>
 
-          {/* Top Machines + Supplier Scorecard */}
+          {/* ── Row 2: Top Failing Machines BarChart + Supplier Scorecard ── */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+
+            {/* Top Failing Machines — horizontal BarChart */}
             <div className="tl-card anim-up">
               <div className="tl-card-header">
                 <div className="tl-card-title">{t("dash.top_fail")}</div>
-                <div className="tl-card-tag">{t("dash.machines_tag")}</div>
+                <div className="tl-card-tag">QC Fails</div>
               </div>
-              <div className="tl-table-wrap">
-                <table className="tl-table">
-                  <thead><tr><th>Machine</th><th>Failures</th><th>Avg Defect %</th></tr></thead>
-                  <tbody>
-                    {metrics.top_failing_machines.map(m => (
-                      <tr key={m.machine_id}>
-                        <td><span className="tl-badge tl-badge-info">{m.machine_id}</span></td>
-                        <td style={{ color: "var(--red)", fontFamily: "var(--font-label)", fontWeight: 600 }}>{m.fail_count}</td>
-                        <td style={{ color: "var(--amber)", fontFamily: "var(--font-label)" }}>{m.avg_defect_rate}%</td>
-                      </tr>
-                    ))}
-                    {!metrics.top_failing_machines.length && (
-                      <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--text-tertiary)", padding: 24 }}>No failures recorded.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              {machineData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={Math.max(machineData.length * 42 + 20, 140)}>
+                  <BarChart data={machineData} layout="vertical" margin={{ top: 4, right: 40, left: 8, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-faint)" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 10, fill: "var(--text-tertiary)", fontFamily: "var(--font-label)" }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="machine" width={52} tick={{ fontSize: 11, fill: "var(--text-secondary)", fontFamily: "var(--font-label)" }} axisLine={false} tickLine={false} />
+                    <Tooltip content={<CustomTooltipBar />} />
+                    <Bar dataKey="fails" name="Failures" radius={[0, 4, 4, 0]} fill="#DC2626" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ textAlign: "center", padding: 32, color: "var(--text-tertiary)", fontSize: 12 }}>No machine failure data recorded.</div>
+              )}
             </div>
 
+            {/* Supplier Scorecard */}
             <div className="tl-card anim-up">
               <div className="tl-card-header">
                 <div className="tl-card-title">{t("dash.supplier_card")}</div>
                 <Link to="/app/supplier-scorecard" className="tl-card-tag tl-card-link">{t("dash.view_all")}</Link>
               </div>
-              <Link to="/app/supplier-scorecard" className="tl-table-link">
-              <div className="tl-table-wrap">
-                <table className="tl-table">
-                  <thead><tr><th>Supplier</th><th>Status</th><th>Lots</th><th>Complaints</th></tr></thead>
-                  <tbody>
-                    {metrics.supplier_scorecard.slice(0, 6).map(s => (
-                      <tr key={s.supplier_id}>
-                        <td>{s.supplier_name || s.supplier_id}</td>
-                        <td>
-                          <span className={`tl-badge ${s.approved_status?.toLowerCase() === "approved" ? "tl-badge-pass" : "tl-badge-warn"}`}>
-                            {s.approved_status || "Unknown"}
-                          </span>
-                        </td>
-                        <td style={{ fontFamily: "var(--font-label)" }}>{s.lots_supplied}</td>
-                        <td style={{ color: s.complaint_count > 0 ? "var(--red)" : "var(--text-tertiary)", fontFamily: "var(--font-label)", fontWeight: s.complaint_count > 0 ? 600 : 400 }}>{s.complaint_count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              </Link>
+              {metrics.supplier_scorecard.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {metrics.supplier_scorecard.slice(0, 6).map(s => (
+                    <div key={s.supplier_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "var(--bg-inset)", borderRadius: 8, border: "1px solid var(--border-subtle)" }}>
+                      <span className={`tl-badge ${s.approved_status?.toLowerCase() === "approved" ? "tl-badge-pass" : "tl-badge-warn"}`} style={{ fontSize: 9, flexShrink: 0 }}>
+                        {s.approved_status || "?"}
+                      </span>
+                      <div style={{ flex: 1, fontWeight: 500, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.supplier_name || s.supplier_id}</div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontSize: 12, fontFamily: "var(--font-label)", fontWeight: 600 }}>{s.lots_supplied} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>lots</span></div>
+                        <div style={{ fontSize: 11, color: s.complaint_count > 0 ? "var(--red)" : "var(--text-tertiary)", fontFamily: "var(--font-label)" }}>{s.complaint_count} issues</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: "center", padding: 32, color: "var(--text-tertiary)", fontSize: 12 }}>No supplier data.</div>
+              )}
             </div>
           </div>
 
-          {/* Recent Imports */}
+          {/* ── Recent Imports ── */}
           {metrics.recent_imports?.length > 0 && (
             <div className="tl-card anim-up">
               <div className="tl-card-header">
@@ -684,7 +763,6 @@ function DashboardScreen() {
     </Shell>
   );
 }
-
 /* ══════════════════════════════════════════════
    COMPLAINTS SCREEN
 ══════════════════════════════════════════════ */
@@ -2008,15 +2086,41 @@ function AuditScreen() {
    ACCOUNT SCREEN
 ══════════════════════════════════════════════ */
 function AccountScreen() {
-  const { user, logout, deleteUserAccount } = useAuth();
+  const { user, logout, deleteUserAccount, isGoogleUser } = useAuth();
   const { theme, setTheme } = useTheme();
   const [users, setUsers] = useState<any[]>([]);
   const [usage, setUsage] = useState<any>(null);
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => { 
     fetchUsers().then(r => setUsers(r.users)).catch(() => {});
     fetchDataUsage().then(setUsage).catch(() => {});
   }, []);
+
+  async function handleDelete() {
+    if (!isGoogleUser && !deletePassword.trim()) { setDeleteError("Please enter your password to confirm."); return; }
+    setDeleteLoading(true);
+    setDeleteError("");
+    try {
+      await deleteUserAccount(isGoogleUser ? undefined : deletePassword);
+      // Auth listener will clear user state and redirect to login
+    } catch (err: any) {
+      const code = err?.code || "";
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+        setDeleteError("Google sign-in was cancelled. Please try again.");
+      } else if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+        setDeleteError("Incorrect password. Please try again.");
+      } else if (code === "auth/too-many-requests") {
+        setDeleteError("Too many attempts. Please wait a moment and try again.");
+      } else {
+        setDeleteError("Failed to delete account. Please try again.");
+      }
+      setDeleteLoading(false);
+    }
+  }
 
   return (
     <Shell page="ACCOUNT">
@@ -2049,22 +2153,91 @@ function AccountScreen() {
             
             <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px solid var(--border-subtle)", display: "flex", gap: 12 }}>
               <button className="tl-btn tl-btn-ghost" onClick={logout}>{Ic.logout} Sign Out</button>
-              <button 
-                className="tl-btn tl-btn-danger" 
-                onClick={async () => {
-                  if (window.confirm("Permanently delete your account and all associated data? This cannot be undone.")) {
-                    try {
-                      await deleteUserAccount();
-                    } catch (e) {
-                      alert("Failed to delete account. Please sign in again to verify your identity.");
-                    }
-                  }
-                }}
+              <button
+                className="tl-btn tl-btn-danger"
+                onClick={() => { setDeleteModal(true); setDeletePassword(""); setDeleteError(""); }}
               >
                 {Ic.trash} Delete Account
               </button>
             </div>
           </div>
+
+          {/* Delete Account Modal */}
+          {deleteModal && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
+              <div className="tl-card anim-up" style={{ width: 440, maxWidth: "90vw", padding: 28, border: "1px solid var(--red)", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(220,38,38,0.12)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--red)", flexShrink: 0 }}>
+                    {Ic.trash}
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: "var(--font-headline)", fontSize: 17, fontWeight: 700, color: "var(--text-primary)" }}>Delete Account Permanently</div>
+                    <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>This action cannot be undone</div>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 16 }}>
+                  All your data — imports, complaints, trace records, and settings — will be <strong style={{ color: "var(--red)" }}>permanently deleted</strong>.
+                  {isGoogleUser ? " Click the button below to re-verify with Google and confirm deletion." : " Enter your password to confirm."}
+                </p>
+
+                {isGoogleUser ? (
+                  // Google users: no password needed, just a confirmation button
+                  <div style={{ background: "var(--bg-inset)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Signed in with Google</div>
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{user?.email}</div>
+                    </div>
+                  </div>
+                ) : (
+                  // Email/password users: show password field
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontFamily: "var(--font-label)", color: "var(--text-tertiary)", marginBottom: 6, letterSpacing: "0.06em" }}>YOUR PASSWORD</div>
+                    <input
+                      type="password"
+                      className="tl-input"
+                      placeholder="Enter your password"
+                      value={deletePassword}
+                      onChange={e => { setDeletePassword(e.target.value); setDeleteError(""); }}
+                      onKeyDown={e => e.key === "Enter" && handleDelete()}
+                      autoFocus
+                      style={{ width: "100%", boxSizing: "border-box" }}
+                    />
+                  </div>
+                )}
+
+                {deleteError && (
+                  <div style={{ fontSize: 12, color: "var(--red)", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: 6, padding: "8px 12px", marginBottom: 12 }}>
+                    {deleteError}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+                  <button
+                    className="tl-btn tl-btn-ghost"
+                    onClick={() => { setDeleteModal(false); setDeleteError(""); setDeletePassword(""); }}
+                    disabled={deleteLoading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="tl-btn tl-btn-danger"
+                    onClick={handleDelete}
+                    disabled={deleteLoading || (!isGoogleUser && !deletePassword.trim())}
+                    style={{ minWidth: 140 }}
+                  >
+                    {deleteLoading ? "Deleting..." : isGoogleUser ? "Re-verify & Delete" : "Yes, Delete Account"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Appearance */}
           <div className="tl-card anim-up" style={{ animationDelay: "0.05s" }}>
