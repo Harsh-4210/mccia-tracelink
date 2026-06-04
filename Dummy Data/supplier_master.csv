@@ -1,28 +1,26 @@
-supplier_id,supplier_name,material_supplied,lead_time_days,approved_status,contact_person,city,gst_no,rating_score,last_audit_date
-S01,Tata Metaliks Ltd,Brake lining compound,7,Approved,Neha Jain,Nashik,272531350688820Z5,2.6,22-04-2023
-S02,Sundram Fasteners Ltd,Steel wire reinforcement,10,Approved,Mahesh Rao,Hyderabad,275894498626988Z5,2.5,15-May-2024
-S03,Elgi Equipments,Adhesive bonding agent,12,Approved,Ramesh Kulkarni,Bengaluru,272702438824573Z5,3.4,03/30/2022
-S04,JK Rubber Pvt Ltd,Friction modifier,14,Approved,Tushar Wagh,Nashik,277364547568321Z5,,12-Apr-2023
-S05,Minda Industries,Carbon composite filler,6,Approved,Sachin Bhosale,Mumbai,277420263617246Z5,3.4,27-05-2022
-S06,Henkel India Pvt Ltd,Surface treatment chemical,8,Approved,Mahesh Rao,Chennai,275028919575309Z5,4.5,16/05/2022
-S07,Rane Brake Lining Ltd,Semi-metallic brake pad,9,Approved,Sanjay Pawar,Bengaluru,277959991201457Z5,4.1,13/10/2022
+﻿supplier_id,supplier_name,material_supplied,lead_time_days,approved_status,contact_person,city,gst_no,rating_score,last_audit_date
+S01,Tata Metaliks Ltd,Brake lining compound,7,Approved,Neha Jain,Nashik,272531350688820Z5,2.6,2023-04-22
+S02,Sundram Fasteners Ltd,Steel wire reinforcement,10,Approved,Mahesh Rao,Hyderabad,275894498626988Z5,2.5,2024-05-15
+S03,Elgi Equipments,Adhesive bonding agent,12,Approved,Ramesh Kulkarni,Bengaluru,272702438824573Z5,3.4,2022-03-30
+S04,JK Rubber Pvt Ltd,Friction modifier,14,Approved,Tushar Wagh,Nashik,277364547568321Z5,,2023-04-12
+S05,Minda Industries,Carbon composite filler,6,Approved,Sachin Bhosale,Mumbai,277420263617246Z5,3.4,2022-05-27
+S06,Henkel India Pvt Ltd,Surface treatment chemical,8,Approved,Mahesh Rao,Chennai,275028919575309Z5,4.5,2022-05-16
+S07,Rane Brake Lining Ltd,Semi-metallic brake pad,9,Approved,Sanjay Pawar,Bengaluru,277959991201457Z5,4.1,2022-10-13
 S08,Brakes India Pvt Ltd,Asbestos-free friction mix,11,Approved,Mahesh Rao,Hyderabad,277366856944791Z5,5.0,2022-07-06
 S09,Motherson Sumi Systems,Wiring harness sub-assy,15,Conditionally Approved,Pooja Naik,Hyderabad,277714686446661Z5,3.7,2022-01-24
-S10,Shriram Pistons & Rings,Cast iron rotor blank,13,Approved,Mahesh Rao,Bengaluru,273780711143066Z5,4.9,24-06-2023
-S11,Amtek Auto Ltd,Forged steel hub,18,On Hold,Mahesh Rao,Nashik,273689503843977Z5,2.9,02-01-2022
-S12,Valeo India Pvt Ltd,Clutch disc facing,10,Approved,Vikram Desai,Bengaluru,,4.7,06/25/2022
-S13,Bosch India Ltd,ABS sensor ring,7,Approved,Anjali More,Chennai,273905759280560Z5,4.7,10-03-2023
+S10,Shriram Pistons & Rings,Cast iron rotor blank,13,Approved,Mahesh Rao,Bengaluru,273780711143066Z5,4.9,2023-06-24
+S11,Amtek Auto Ltd,Forged steel hub,18,On Hold,Mahesh Rao,Nashik,273689503843977Z5,2.9,2022-01-02
+S12,Valeo India Pvt Ltd,Clutch disc facing,10,Approved,Vikram Desai,Bengaluru,,4.7,2022-06-25
+S13,Bosch India Ltd,ABS sensor ring,7,Approved,Anjali More,Chennai,273905759280560Z5,4.7,2023-03-10
 S14,Mico Bosch,Electronic actuator sub,20,Conditionally Approved,Rohit Gupta,Nashik,278706775157873Z5,3.6,
-S15,SKF India Ltd,Wheel bearing set,9,Approved,Mahesh Rao,,,2.6,18/11/2024
+S15,SKF India Ltd,Wheel bearing set,9,Approved,Mahesh Rao,,,2.6,2024-11-18
 S16,Gabriel India Ltd,Damper spring,12,Approved,Priya Sharma,Chennai,279317531495235Z5,3.7,2022-07-13
-S17,Lumax Industries,Lighting assy bracket,14,Approved,Deepa Joshi,Coimbatore,,4.3,12/08/2022
+S17,Lumax Industries,Lighting assy bracket,14,Approved,Deepa Joshi,Coimbatore,,4.3,2022-08-12
 S18,Endurance Technologies,Die-cast aluminium casing,7,Approved,Mahesh Rao,Hyderabad,275395738516245Z5,2.7,2022-07-20
 S19,Subros Ltd,Compressor gasket set,11,Conditionally Approved,Mahesh Rao,Mumbai,275161173462949Z5,3.7,2024-04-01
-S20,Harita Seating Systems,Seat-foam filler material,8,Approved,Vikram Desai,Nashik,279004896177357Z5,4.2,23/09/2024
+S20,Harita Seating Systems,Seat-foam filler material,8,Approved,Vikram Desai,Nashik,279004896177357Z5,4.2,2024-09-23
 S21,Phoenix Parts Pvt Ltd,Brake pad raw mix,16,Suspended,Ramesh Kulkarni,Pune,271880713818667Z5,3.8,2022-11-19
-S22,Delta Auto Components,Friction compound Type-B,13,On Hold,Anil Shinde,Mumbai,278100591133334Z5,4.7,23-03-2022
-S23,Precision Castings Ltd,Investment cast bracket,10,Approved,Neha Jain,Bengaluru,276526403963021Z5,3.5,09/07/2023
+S22,Delta Auto Components,Friction compound Type-B,13,On Hold,Anil Shinde,Mumbai,278100591133334Z5,4.7,2022-03-23
+S23,Precision Castings Ltd,Investment cast bracket,10,Approved,Neha Jain,Bengaluru,276526403963021Z5,3.5,2023-07-09
 S24,Arjun Alloys Pvt Ltd,Aluminium alloy ingot,5,Approved,Anjali More,Pune,272760919825741Z5,3.0,2023-12-16
-S25,Rajhans Chemicals,Resin binder Grade-3,19,Conditionally Approved,Deepa Joshi,Coimbatore,276324486160707Z5,5.0,17-01-2022
-S01,Tata Metaliks Ltd,Brake lining compound,7,Approved,,Nashik,,2.6,22-04-2023
-S03,Elgi Equip.,Adhesive bonding agent,12,Approved,,Bengaluru,272702438824573Z5,3.4,03/30/2022
+S25,Rajhans Chemicals,Resin binder Grade-3,19,Conditionally Approved,Deepa Joshi,Coimbatore,276324486160707Z5,5.0,2022-01-17
